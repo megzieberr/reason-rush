@@ -130,6 +130,8 @@ const T = {
             af: p => 'Jy het ' + ordinal(p.place, 'af') + ' geëindig met ' + p.score + ' punte.' },
   linesWrong: { en: 'The reason was right — the parallel lines were not.',
                 af: 'Die rede was reg — die ewewydige lyne nie.' },
+  relWrong:   { en: 'The reason was right — but look again at what the angles do.',
+                af: 'Die rede was reg — maar kyk weer wat die hoeke doen.' },
   soFar:  { en: n => n + ' points so far', af: n => n + ' punte altesaam' },
   gone:   { en: 'Game over. Thanks for playing!', af: 'Speletjie klaar. Dankie vir die speel!' },
   offline:{ en: 'Reconnecting…', af: 'Herkoppel tans…' }
@@ -274,13 +276,13 @@ function render(st) {
      just pull the countdown back in line with the host */
   const key = st.phase + ':' + (st.n || 0) + ':' + (st.part || 0);
   if (key === me.screen) {
-    if ((st.phase === 'q' || st.phase === 'q2') && st.msLeft !== undefined)
+    if (st.phase === 'q' && st.msLeft !== undefined)
       startClock(st.msLeft, st.seconds * 1000);
     return;
   }
   me.screen = key;
   if (st.phase === 'lobby') { show('s-lobby'); stopClock(); return; }
-  if (st.phase === 'q' || st.phase === 'q2') return renderQ(st);
+  if (st.phase === 'q') return renderQ(st);
   if (st.phase === 'reveal') return renderReveal(st);
   if (st.phase === 'podium') return renderPodium(st);
   if (st.phase === 'ended') {
@@ -315,11 +317,15 @@ function renderQ(st) {
   $('t-locked').classList.add('hide');
 
   let prompt, opts, cls;
-  if (st.part === 2) {
+  if (st.partKind === 'lines') {
     prompt = UI.whichPar[me.lang] || UI.whichPar.en;
     opts = st.options.map(o => ({ id: o, text: o }));
     cls = 'opts one';
-  } else if (st.kind === 'yesno') {
+  } else if (st.partKind === 'rel') {
+    prompt = UI.whichRel[me.lang] || UI.whichRel.en;
+    opts = RELS.map(id => ({ id, text: REL_TEXT[id][me.lang] || REL_TEXT[id].en }));
+    cls = 'opts one';
+  } else if (st.partKind === 'yesno') {
     prompt = UI.isExt[me.lang] || UI.isExt.en;
     opts = ['yes', 'no'].map(id => ({ id, text: YESNO[id][me.lang] || YESNO[id].en, yesno: true }));
     cls = 'opts big';
@@ -329,7 +335,7 @@ function renderQ(st) {
     cls = 'opts';
   }
   $('q-prompt').textContent = prompt;
-  $('q-prompt').className = 'prompt' + (st.part === 2 || st.kind === 'yesno' ? ' small' : '');
+  $('q-prompt').className = 'prompt' + (st.partKind === 'reason' ? '' : ' small');
   $('q-opts').className = cls;
 
   const done = !!me.answered[key];
@@ -361,8 +367,9 @@ function pick(st, id) {
   });
   const opts = [...$('q-opts').children];
   opts.forEach(b => { b.disabled = true; });
-  const idx = st.part === 2 ? st.options.indexOf(id)
-            : st.kind === 'yesno' ? ['yes', 'no'].indexOf(id)
+  const idx = st.partKind === 'lines' ? st.options.indexOf(id)
+            : st.partKind === 'rel' ? RELS.indexOf(id)
+            : st.partKind === 'yesno' ? ['yes', 'no'].indexOf(id)
             : OPTION_ORDER.indexOf(id);
   if (opts[idx]) opts[idx].classList.add('picked');
   lock();
@@ -386,7 +393,12 @@ function renderReveal(st) {
   let note = '';
   if (!v) note = tr('tooLate');
   else if (v.trap) note = trapWhy(v.trap, me.lang);
-  else if (v.ok && v.linesOk === false) note = tr('linesWrong');
+  else if (v.ok && v.followups && v.followups.indexOf(false) >= 0) {
+    /* name the first follow-up they missed — partKinds[0] is the reason,
+       so follow-up i lines up with partKinds[i+1] */
+    const missed = (st.partKinds || [])[v.followups.indexOf(false) + 1];
+    note = tr(missed === 'lines' ? 'linesWrong' : 'relWrong');
+  }
   else note = tr('soFar', v.total);
   $('v-note').textContent = note;
 

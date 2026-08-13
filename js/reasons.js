@@ -69,6 +69,28 @@ function trapWhy(id, lang) {
   return lang === 'af' ? t.whyAf : t.whyEn;
 }
 
+/* ---- the relationship pick (part 2 of most questions, 2026-08-13) ----
+   After the reason, the class says what the marked angles actually DO.
+   Four fixed options; "complementary" is a standing distractor — no rule
+   in this round makes 90°. The degree values ride on the buttons so
+   "supplementary" stays honest even for the three angles of a triangle
+   (they add to 180°, which is exactly what the button claims).
+   ext ∠ of Δ has NO entry here on purpose: the outside angle EQUALS the
+   two opposite interior angles added together, so none of these four is
+   true of it — that question stays reason-only (Megan's ruling). */
+const RELS = ['equal', 'supp', 'comp', 'r360'];
+const REL_TEXT = {
+  equal: { en: 'Equal',                              af: 'Gelyk' },
+  supp:  { en: 'Supplementary — add up to 180°',     af: 'Supplementêr — tel op tot 180°' },
+  comp:  { en: 'Complementary — add up to 90°',      af: 'Komplementêr — tel op tot 90°' },
+  r360:  { en: 'Add up to 360°',                     af: 'Tel op tot 360°' }
+};
+const RULE_REL = {
+  corr: 'equal', alt: 'equal', vertopp: 'equal', oppeq: 'equal', equi: 'equal',
+  coint: 'supp', adjstr: 'supp', inttri: 'supp',
+  roundpt: 'r360'
+};
+
 /* the yes/no round */
 const YESNO = {
   yes: { en: 'Yes', af: 'Ja' },
@@ -107,6 +129,8 @@ const UI = {
   forWhy:     { en: 'For why?',  af: 'Want hoekom?' },
   whichPar:   { en: 'Which two lines are ∥ for this to be true?',
                 af: 'Watter twee lyne is ∥ sodat dit waar is?' },
+  whichRel:   { en: 'And the marked angles themselves are…',
+                af: 'En die gemerkte hoeke self is…' },
   isExt:      { en: 'Is the highlighted angle an exterior angle of a triangle?',
                 af: 'Is die gemerkte hoek ’n buitehoek van ’n driehoek?' }
 };

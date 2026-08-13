@@ -11,11 +11,12 @@ const CONFIG = {
   CLASS_CODE: 'MATH',        // one code for every class
   QUESTIONS: 20,
 
-  SECONDS_REASON: 20,        // pick the reason
-  SECONDS_LINES: 12,         // which two lines are parallel
+  SECONDS_REASON: 20,        // pick the reason (also the yes/no questions)
+  SECONDS_REL: 10,           // equal / supplementary / complementary / 360°
+  SECONDS_LINES: 10,         // which two lines are parallel
 
-  POINTS_BASE: 600,          // for getting it right at all
+  POINTS_BASE: 600,          // for getting the reason right at all
   POINTS_SPEED: 400,         // on top, scaled by how much time was left
-  POINTS_LINES_BASE: 300,    // part 2 is worth less than part 1
-  POINTS_LINES_SPEED: 200
+  POINTS_FOLLOWUP_BASE: 300, // the relationship and ∥-lines parts each
+  POINTS_FOLLOWUP_SPEED: 200 //   count less than the reason itself
 };

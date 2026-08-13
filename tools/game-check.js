@@ -5,7 +5,7 @@ const root = path.join(__dirname, '..');
 const src = ['js/geom.js', 'js/diagrams.js', 'js/reasons.js', 'js/questions.js']
   .map(p => fs.readFileSync(path.join(root, p), 'utf8')).join('\n');
 const api = new Function(src +
-  '\nreturn {buildGame, MIX, OPTION_ORDER, REASONS, TRAPS, ordinal};')();
+  '\nreturn {buildGame, MIX, OPTION_ORDER, REASONS, TRAPS, ordinal, RULE_REL, RELS};')();
 
 let fails = [];
 const tally = {};
@@ -23,28 +23,39 @@ for (let g = 0; g < 200; g++) {
     if (!q.svgR || q.svgR.indexOf('<svg') !== 0) fails.push(`game ${g} q${i}: no reveal svg`);
     if (!q.reveal || !q.reveal.en || !q.reveal.af) fails.push(`game ${g} q${i}: reveal text missing`);
 
+    const isYesNo = q.answer === 'yes' || q.answer === 'no';
+    const kinds = q.parts.map(p => p.kind).join(',');
+
     /* the answer must be a real option id, never a trap */
-    if (q.kind === 'reason') {
+    if (!isYesNo) {
       if (api.OPTION_ORDER.indexOf(q.answer) < 0) fails.push(`game ${g} q${i}: answer ${q.answer} not on the list`);
       if (api.TRAPS[q.answer]) fails.push(`game ${g} q${i}: answer is a trap!`);
-    } else if (q.answer !== 'yes' && q.answer !== 'no') {
-      fails.push(`game ${g} q${i}: bad yes/no answer ${q.answer}`);
     }
 
-    /* two-part questions */
-    const twoPart = ['corr', 'coint', 'alt'].indexOf(q.answer) >= 0;
-    if (twoPart) {
-      if (!q.part2) fails.push(`game ${g} q${i}: ${q.answer} has no part 2`);
-      else {
-        if (q.part2.options.length !== 3) fails.push(`game ${g} q${i}: part 2 has ${q.part2.options.length} options`);
-        if (q.part2.options.indexOf(q.part2.answer) < 0) fails.push(`game ${g} q${i}: right pair not among the options`);
-        if (new Set(q.part2.options).size !== 3) fails.push(`game ${g} q${i}: duplicate pair options`);
-        if (q.reveal.en.indexOf(q.part2.answer) < 0) fails.push(`game ${g} q${i}: reveal does not name the ∥ lines`);
-      }
-    } else if (q.part2) fails.push(`game ${g} q${i}: ${q.answer} should not have a part 2`);
+    /* the parts recipe: yes/no and ext ∠ of Δ are single-part; FUN questions
+       run reason → rel → lines; everything else reason → rel */
+    const wantKinds =
+      isYesNo ? 'yesno'
+      : q.answer === 'exttri' ? 'reason'
+      : ['corr', 'coint', 'alt'].indexOf(q.answer) >= 0 ? 'reason,rel,lines'
+      : 'reason,rel';
+    if (kinds !== wantKinds) fails.push(`game ${g} q${i}: ${q.answer} has parts [${kinds}], expected [${wantKinds}]`);
 
-    /* the yes/no pair must be one of each */
-    if (q.kind === 'yesno' && !q.why) fails.push(`game ${g} q${i}: yes/no with no explanation`);
+    q.parts.forEach(part => {
+      if (part.kind === 'reason' && part.answer !== q.answer) fails.push(`game ${g} q${i}: reason part answer mismatch`);
+      if (part.kind === 'rel') {
+        if (part.answer !== api.RULE_REL[q.answer]) fails.push(`game ${g} q${i}: rel answer ${part.answer} ≠ RULE_REL`);
+        if (api.RELS.indexOf(part.answer) < 0) fails.push(`game ${g} q${i}: rel answer ${part.answer} not an option`);
+      }
+      if (part.kind === 'lines') {
+        if (part.options.length !== 3) fails.push(`game ${g} q${i}: lines part has ${part.options.length} options`);
+        if (part.options.indexOf(part.answer) < 0) fails.push(`game ${g} q${i}: right pair not among the options`);
+        if (new Set(part.options).size !== 3) fails.push(`game ${g} q${i}: duplicate pair options`);
+        if (q.reveal.en.indexOf(part.answer) < 0) fails.push(`game ${g} q${i}: reveal does not name the ∥ lines`);
+      }
+    });
+
+    if (isYesNo && !q.why) fails.push(`game ${g} q${i}: yes/no with no explanation`);
   });
 
   for (const [rule, n] of api.MIX) {
@@ -58,14 +69,14 @@ for (let g = 0; g < 200; g++) {
 
   /* the same rule should not land twice in a row */
   for (let i = 1; i < game.length; i++)
-    if (game[i].answer === game[i - 1].answer && game[i].kind === 'reason')
+    if (game[i].answer === game[i - 1].answer && game[i].parts[0].kind === 'reason')
       fails.push(`game ${g}: ${game[i].answer} twice in a row at q${i}`);
 }
 
-/* part 2 must not always want the same letters */
+/* the lines part must not always want the same letters */
 const pairs = new Set();
 for (let g = 0; g < 60; g++)
-  api.buildGame(777 + g).forEach(q => { if (q.part2) pairs.add(q.part2.answer); });
+  api.buildGame(777 + g).forEach(q => q.parts.forEach(p => { if (p.kind === 'lines') pairs.add(p.answer); }));
 
 console.log('rule counts over 200 games:', tally);
 console.log('distinct ∥ pairs asked for:', pairs.size);

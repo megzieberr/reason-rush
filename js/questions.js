@@ -68,24 +68,26 @@ function buildGame(seed) {
     const q = {
       n: idx + 1,
       total: slots.length,
-      kind: isYesNo ? 'yesno' : 'reason',
       svgQ: svgWrap(fig.q),
       svgR: svgWrap(fig.r),
       answer: rule,
-      part2: null,
       why: isYesNo ? YESNO_WHY[fig.why] : null
     };
 
+    /* every question is a LIST of parts, played in order:
+         reason → relationship (when RULE_REL has one) → ∥ lines (FUN only).
+       yes/no questions are their own single part; ext ∠ of Δ is reason-only
+       because none of the four relationships is true of it. */
     if (isYesNo) {
+      q.parts = [{ kind: 'yesno', answer: rule }];
       q.reveal = { en: YESNO[rule].en, af: YESNO[rule].af };
-    } else if (twoPart) {
-      q.part2 = { options: fig.pairOptions, answer: fig.answerPair };
-      q.reveal = {
-        en: REASONS[rule].en + '; ' + fig.answerPair,
-        af: REASONS[rule].af + '; ' + fig.answerPair
-      };
     } else {
-      q.reveal = { en: REASONS[rule].en, af: REASONS[rule].af };
+      q.parts = [{ kind: 'reason', answer: rule }];
+      if (RULE_REL[rule]) q.parts.push({ kind: 'rel', answer: RULE_REL[rule] });
+      if (twoPart) q.parts.push({ kind: 'lines', answer: fig.answerPair, options: fig.pairOptions });
+      q.reveal = twoPart
+        ? { en: REASONS[rule].en + '; ' + fig.answerPair, af: REASONS[rule].af + '; ' + fig.answerPair }
+        : { en: REASONS[rule].en, af: REASONS[rule].af };
     }
     return q;
   });

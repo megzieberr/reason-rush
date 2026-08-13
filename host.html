@@ -111,12 +111,18 @@ const H = {
   game: null,
   i: -1,
   phase: 'lobby',
-  part: 1,
-  answers: { 1: {}, 2: {} },
+  partIdx: 0,         // which of cur().parts is on screen
+  answers: [],        // one {pid -> answer} map per part of the current question
   endsAt: 0,
   totalMs: 0,
   dead: false         // a newer host tab took over — this one stands down
 };
+
+function partSeconds(kind) {
+  if (kind === 'rel') return CONFIG.SECONDS_REL;
+  if (kind === 'lines') return CONFIG.SECONDS_LINES;
+  return CONFIG.SECONDS_REASON;          // reason and yes/no
+}
 let net = null, tick = null, pending = null;
 
 /* ---------- single-host election ----------
@@ -157,7 +163,7 @@ $('h-url').textContent = location.href.replace(/host\.html.*$/, '');
 
 const cur = () => H.game && H.game[H.i];
 const playerIds = () => Object.keys(H.players);
-const answeredNow = () => Object.keys(H.answers[H.part] || {}).length;
+const answeredNow = () => Object.keys(H.answers[H.partIdx] || {}).length;
 
 /* ---------- connection ---------- */
 net = makeNet((event, p) => {
@@ -207,13 +213,15 @@ function broadcast() {
   /* every state carries the host's identity + birth time, so players can
      ignore anything from an out-ranked host tab */
   const st = { phase: H.phase, hostId: HOST_ID, since: HOST_SINCE, pids: playerIds() };
-  if (H.phase === 'q' || H.phase === 'q2') {
-    const q = cur();
-    st.n = q.n; st.total = q.total; st.kind = q.kind; st.part = H.part;
+  if (H.phase === 'q') {
+    const q = cur(), part = q.parts[H.partIdx];
+    st.n = q.n; st.total = q.total;
+    st.part = H.partIdx + 1;
+    st.partKind = part.kind;
     st.svg = q.svgQ;
     st.seconds = Math.round(H.totalMs / 1000);
     st.msLeft = Math.max(0, H.endsAt - Date.now());
-    if (H.part === 2) st.options = q.part2.options;
+    if (part.options) st.options = part.options;
   } else if (H.phase === 'reveal') {
     const q = cur();
     st.n = q.n; st.total = q.total;
@@ -221,6 +229,7 @@ function broadcast() {
     st.reveal = q.reveal;
     st.why = q.why || null;
     st.letter = RULE_LETTER[q.answer] || 'Δ';   // which rail tile lights up
+    st.partKinds = q.parts.map(p => p.kind);    // so a player can name WHICH follow-up missed
     st.verdicts = verdicts();
     st.board = board().slice(0, 5);
   } else if (H.phase === 'podium') {
@@ -270,27 +279,28 @@ $('b-start').onclick = () => {
 function nextQuestion() {
   H.i++;
   if (H.i >= H.game.length) return podium();
-  H.phase = 'q'; H.part = 1; H.answers = { 1: {}, 2: {} };
-  startTimer(CONFIG.SECONDS_REASON);
-  paintQuestion();
-  broadcast();
-}
-
-function toPart2() {
-  H.phase = 'q2'; H.part = 2;
-  startTimer(CONFIG.SECONDS_LINES);
+  const q = H.game[H.i];
+  H.phase = 'q'; H.partIdx = 0;
+  H.answers = q.parts.map(() => ({}));
+  startTimer(partSeconds(q.parts[0].kind));
   paintQuestion();
   broadcast();
 }
 
 function advance() {
-  /* re-entry guard: Skip stays visible across the part-1→part-2 switch, so a
-     double-click would advance twice and skip part 2 entirely */
+  /* re-entry guard: Skip stays visible across part switches, so a
+     double-click would advance twice and swallow a whole part */
   if (Date.now() - (H.lastAdvance || 0) < 500) return;
   H.lastAdvance = Date.now();
   stopTimer();
   const q = cur();
-  if (H.phase === 'q' && q.part2) return toPart2();
+  if (H.phase === 'q' && H.partIdx < q.parts.length - 1) {
+    H.partIdx++;
+    startTimer(partSeconds(q.parts[H.partIdx].kind));
+    paintQuestion();
+    broadcast();
+    return;
+  }
   reveal();
 }
 
@@ -339,48 +349,45 @@ $('b-end').onclick = () => {
 function onAnswer(p) {
   const q = cur();
   if (!q || !p || !H.players[p.pid]) return;
-  if (p.n !== q.n) return;
-  /* part-1 answers stay welcome DURING part 2 of the same question: a kid on
+  if (p.n !== q.n || H.phase !== 'q') return;
+  const pi = (p.part | 0) - 1;
+  if (pi < 0 || pi >= q.parts.length) return;
+  /* answers for any EARLIER part of the same question stay welcome: a kid on
      laggy wifi who tapped in time must not lose credit because the message
-     took 1.5s to arrive. Verdicts are only computed at the reveal, so a
-     late-landing part-1 answer still counts fully. */
-  if (p.part === 1 && H.phase !== 'q' && H.phase !== 'q2') return;
-  if (p.part === 2 && H.phase !== 'q2') return;
-  if (H.answers[p.part][p.pid]) return;
+     landed after the screen moved on. Verdicts only run at the reveal. */
+  if (pi > H.partIdx) return;
+  if (H.answers[pi][p.pid]) return;
 
-  let ok = false, pts = 0, trap = null;
-  if (p.part === 1) {
-    ok = p.choice === q.answer;
-    if (!ok && TRAPS[p.choice]) trap = p.choice;
-    if (ok) {
-      const frac = Math.max(0, 1 - p.ms / (CONFIG.SECONDS_REASON * 1000));
-      pts = Math.round(CONFIG.POINTS_BASE + CONFIG.POINTS_SPEED * frac);
-    }
-  } else {
-    ok = p.choice === q.part2.answer;
-    if (ok) {
-      const frac = Math.max(0, 1 - p.ms / (CONFIG.SECONDS_LINES * 1000));
-      pts = Math.round(CONFIG.POINTS_LINES_BASE + CONFIG.POINTS_LINES_SPEED * frac);
-    }
+  const part = q.parts[pi];
+  const isMain = part.kind === 'reason' || part.kind === 'yesno';
+  const ok = p.choice === part.answer;
+  const trap = (part.kind === 'reason' && !ok && TRAPS[p.choice]) ? p.choice : null;
+  let pts = 0;
+  if (ok) {
+    const frac = Math.max(0, 1 - p.ms / (partSeconds(part.kind) * 1000));
+    pts = isMain
+      ? Math.round(CONFIG.POINTS_BASE + CONFIG.POINTS_SPEED * frac)
+      : Math.round(CONFIG.POINTS_FOLLOWUP_BASE + CONFIG.POINTS_FOLLOWUP_SPEED * frac);
   }
-  H.answers[p.part][p.pid] = { choice: p.choice, ok, pts, trap };
+  H.answers[pi][p.pid] = { choice: p.choice, ok, pts, trap };
   H.players[p.pid].score += pts;
   paintTally();
   if (answeredNow() >= playerIds().length) advance();
 }
 
 function verdicts() {
-  const out = {};
-  const twoPart = !!cur().part2;
+  const q = cur(), out = {};
   playerIds().forEach(pid => {
-    const a1 = H.answers[1][pid], a2 = H.answers[2][pid];
-    if (!a1 && !a2) return;                       // never answered — no card
+    const per = q.parts.map((_, i) => H.answers[i][pid]);
+    if (per.every(a => !a)) return;               // never answered — no card
+    const a0 = per[0];
     out[pid] = {
-      ok: !!(a1 && a1.ok),
-      pts: (a1 ? a1.pts : 0) + (a2 ? a2.pts : 0),
-      trap: a1 ? a1.trap : null,
+      ok: !!(a0 && a0.ok),
+      pts: per.reduce((s, a) => s + (a ? a.pts : 0), 0),
+      trap: a0 ? a0.trap : null,
       total: H.players[pid].score,
-      linesOk: twoPart ? !!(a2 && a2.ok) : null
+      /* correctness of each follow-up part, aligned with st.partKinds[1..] */
+      followups: q.parts.length > 1 ? per.slice(1).map(a => !!(a && a.ok)) : null
     };
   });
   return out;
@@ -402,16 +409,17 @@ function places() {
 
 /* ---------- painting ---------- */
 function paintQuestion() {
-  const q = cur();
+  const q = cur(), part = q.parts[H.partIdx];
   railMount($('rail-q'));
   railReset($('rail-q'));
   $('h-qn').textContent = 'Question ' + q.n + ' of ' + q.total;
   $('h-fig').innerHTML = q.svgQ;
-  $('h-prompt').textContent = H.part === 2 ? UI.whichPar.en
-    : q.kind === 'yesno' ? UI.isExt.en : UI.forWhy.en;
-  $('h-prompt').className = 'prompt' + (H.part === 2 || q.kind === 'yesno' ? ' small' : '');
-  const list = H.part === 2 ? q.part2.options
-    : q.kind === 'yesno' ? ['Yes', 'No']
+  const PROMPTS = { reason: UI.forWhy, yesno: UI.isExt, rel: UI.whichRel, lines: UI.whichPar };
+  $('h-prompt').textContent = PROMPTS[part.kind].en;
+  $('h-prompt').className = 'prompt' + (part.kind === 'reason' ? '' : ' small');
+  const list = part.kind === 'lines' ? part.options
+    : part.kind === 'rel' ? RELS.map(id => REL_TEXT[id].en)
+    : part.kind === 'yesno' ? ['Yes', 'No']
     : OPTION_ORDER.map(id => optionText(id, 'en'));
   $('h-opts').innerHTML = '';
   list.forEach(txt => {

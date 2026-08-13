@@ -25,9 +25,13 @@ deployed somewhere they can open — localhost only works on your own laptop.
 2. You press Start. 20 questions, shuffled, never the same two in a row.
 3. Each question: blank figure, two angles wedged in teal, **"For why?"**, and
    fourteen buttons. 20 seconds.
-4. The F / U / N questions have a **second part**: "which two lines are ∥ for
-   this to be true?", three options, 12 seconds. The line names are drawn fresh
-   every question so it can't be answered from memory.
+4. Then the follow-ups, 10 seconds each. Almost every question asks what the
+   marked angles actually are — **equal / supplementary (180°) /
+   complementary (90°) / add up to 360°** — and the F / U / N questions ask a
+   third part, "which two lines are ∥ for this to be true?", with the line
+   names drawn fresh each time. Ext ∠ of Δ skips the relationship pick on
+   purpose: none of the four is true of it (the outside angle *equals the
+   other two added together*), and the yes/no questions stay single-part.
 5. Reveal: the correct reason in words, the same figure with the shape traced
    in pink, and the leaderboard. **No names, no who-got-it-right.** Each learner
    sees their own ✓ or ✗ privately on their own device.
