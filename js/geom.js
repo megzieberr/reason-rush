@@ -201,11 +201,15 @@ function shoe(p, deg, flip) {
    to the apex direction tipped the whole face over. */
 function head(apex, up, r) {
   const R = r || 22, cH = ray(apex, 90, R + 30);
-  const e1 = ray(cH, 118, R * .42), e2 = ray(cH, 62, R * .42);
+  /* eyes at 133°/47° on .55R, and their RADIUS scales with the head too —
+     a fixed 5.4px still touched on the smallest triangles (tools/eye-check.js
+     measured -0.3px in the worst case). At .26R the rim gap is always .23R. */
+  const eR = R * .26;
+  const e1 = ray(cH, 133, R * .55), e2 = ray(cH, 47, R * .55);
   return seg(apex, ray(apex, 90, 30), { w: 4.2 }) +
     `<circle cx="${f(cH.x)}" cy="${f(cH.y)}" r="${f(R)}" fill="#fff" stroke="${C.ink}" stroke-width="4"/>` +
-    `<circle cx="${f(e1.x)}" cy="${f(e1.y)}" r="5.4" fill="#fff" stroke="${C.ink}" stroke-width="3"/>` +
-    `<circle cx="${f(e2.x)}" cy="${f(e2.y)}" r="5.4" fill="#fff" stroke="${C.ink}" stroke-width="3"/>`;
+    `<circle cx="${f(e1.x)}" cy="${f(e1.y)}" r="${f(eR)}" fill="#fff" stroke="${C.ink}" stroke-width="3"/>` +
+    `<circle cx="${f(e2.x)}" cy="${f(e2.y)}" r="${f(eR)}" fill="#fff" stroke="${C.ink}" stroke-width="3"/>`;
 }
 
 /* a line-end letter, sitting just past the end of the line it names */

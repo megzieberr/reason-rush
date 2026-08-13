@@ -26,13 +26,25 @@ function makeNet(onEvent, onStatus) {
   };
 }
 
-/* a short id that survives a dropped wifi connection, so a tablet that falls
-   off and comes back keeps its score instead of joining as a new player */
+/* sessionStorage that cannot throw — private/incognito mode on some older
+   tablets raises SecurityError on any access, which would kill the Join
+   button with no error shown. Falls back to in-memory (refresh loses it,
+   but the app still works). */
+const memStore = {};
+const store = {
+  get(k)    { try { return sessionStorage.getItem(k); } catch (e) { return memStore[k] !== undefined ? memStore[k] : null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} memStore[k] = v; },
+  del(k)    { try { sessionStorage.removeItem(k); } catch (e) {} delete memStore[k]; }
+};
+
+/* a short id that survives a refresh or a dropped wifi connection, so a
+   tablet that falls off and comes back keeps its score instead of joining
+   as a new player */
 function playerId() {
-  let id = sessionStorage.getItem('rr-pid');
+  let id = store.get('rr-pid');
   if (!id) {
     id = 'p' + Math.random().toString(36).slice(2, 9);
-    sessionStorage.setItem('rr-pid', id);
+    store.set('rr-pid', id);
   }
   return id;
 }

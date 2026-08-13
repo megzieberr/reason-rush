@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
+<script src="js/avatars.js"></script>
+<script src="js/rail.js"></script>
 <script src="js/geom.js"></script>
 <script src="js/diagrams.js"></script>
 <script src="js/reasons.js"></script>
@@ -18,6 +20,10 @@
 
   <!-- ============ lobby ============ -->
   <section id="s-lobby">
+    <div class="center" style="margin:6px 0 18px">
+      <div class="rail hero" id="rail-hero"></div>
+      <h1 class="logo">Reason Rush</h1>
+    </div>
     <div class="split">
       <div class="card center">
         <p class="sub" style="margin:0">Class code</p>
@@ -30,7 +36,7 @@
       </div>
       <div class="card">
         <h2 id="h-count">Nobody has joined yet</h2>
-        <div class="chips" id="h-roster"></div>
+        <div class="pwall" id="h-roster"></div>
       </div>
     </div>
   </section>
@@ -42,7 +48,7 @@
       <span id="h-tally" class="chip"></span>
       <span class="timer" id="h-clock">20</span>
     </div>
-    <div class="bar" style="margin-bottom:12px"><i id="h-bar" style="width:100%"></i></div>
+    <div class="rail" id="rail-q" style="margin-bottom:12px"></div>
     <div class="split">
       <div>
         <div class="figbox" id="h-fig"></div>
@@ -60,6 +66,7 @@
   <section id="s-reveal" class="hide">
     <div class="split">
       <div>
+        <div class="rail" id="rail-r" style="margin-bottom:14px"></div>
         <p class="center" style="margin:0 0 12px"><span class="reason" id="h-reason"></span></p>
         <p class="center sub hide" id="h-why" style="font-weight:600"></p>
         <div class="figbox" id="h-rfig"></div>
@@ -100,16 +107,50 @@ const SECTIONS = ['s-lobby', 's-q', 's-reveal', 's-podium'];
 const show = id => SECTIONS.forEach(s => $(s).classList.toggle('hide', s !== id));
 
 const H = {
-  players: {},        // pid -> {name, lang, score}
+  players: {},        // pid -> {name, lang, avatar, score}
   game: null,
   i: -1,
   phase: 'lobby',
   part: 1,
   answers: { 1: {}, 2: {} },
   endsAt: 0,
-  totalMs: 0
+  totalMs: 0,
+  dead: false         // a newer host tab took over — this one stands down
 };
 let net = null, tick = null, pending = null;
+
+/* ---------- single-host election ----------
+   One universal class code means ANY open host.html — a stale projector tab,
+   a second laptop, a test rig — shares the channel, and two hosts fighting
+   over one lobby shows learners another game's reveal (found live,
+   2026-08-13: a leftover test tab re-broadcast its old question over
+   Megan's fresh lobby). Rule: every host message carries the tab's birth
+   time, the NEWEST host wins, an out-ranked host silences itself and says
+   so on screen. Learners ignore anything from an out-ranked host. */
+const HOST_ID = 'h' + Math.random().toString(36).slice(2, 10);
+const HOST_SINCE = Date.now();
+let lastAssert = 0;
+
+function assertAlive() {
+  if (Date.now() - lastAssert < 1500) return;
+  lastAssert = Date.now();
+  net.send('host-hello', { hostId: HOST_ID, since: HOST_SINCE });
+}
+
+function goDead() {
+  if (H.dead) return;
+  H.dead = true;
+  stopTimer();
+  const o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;z-index:99;background:rgba(19,50,75,.93);' +
+    'display:flex;align-items:center;justify-content:center;text-align:center;padding:30px';
+  o.innerHTML = '<div style="color:#fff;max-width:520px"><div style="font-size:52px">🙅</div>' +
+    '<h2 style="color:#fff">Another teacher screen took over</h2>' +
+    '<p style="opacity:.85;line-height:1.6">A newer host tab opened with the same class code, ' +
+    'so this one has stepped aside and is no longer running the game.<br>' +
+    'Close this tab — or refresh it to take the game back.</p></div>';
+  document.body.appendChild(o);
+}
 
 $('h-code').textContent = CONFIG.CLASS_CODE;
 $('h-url').textContent = location.href.replace(/host\.html.*$/, '');
@@ -120,16 +161,37 @@ const answeredNow = () => Object.keys(H.answers[H.part] || {}).length;
 
 /* ---------- connection ---------- */
 net = makeNet((event, p) => {
+  /* another host on the channel: newer birth time wins, loser goes quiet */
+  if (p && p.hostId && p.hostId !== HOST_ID) {
+    if ((p.since || 0) > HOST_SINCE) goDead();
+    else assertAlive();                    // I'm newer — tell the old tab to stand down
+    return;
+  }
+  if (H.dead) return;
   if (event === 'join') return onJoin(p);
   if (event === 'answer') return onAnswer(p);
 }, status => {
-  if (status === 'SUBSCRIBED') net.send('ping', {});   // ask anyone already out there to check in
+  if (status === 'SUBSCRIBED' && !H.dead) {
+    assertAlive();                         // silences any zombie host out there
+    net.send('ping', {});                  // ask anyone already waiting to check in
+  }
 });
+
+/* Heartbeat: re-send the current state every 2.5s. Broadcasts are
+   fire-and-forget — a tablet that sleeps through one wakes up stranded on
+   the old screen forever (seen live: "stuck on You're in" / stuck after not
+   answering). With the heartbeat every device converges within a couple of
+   seconds of rejoining the network, whatever it missed. */
+setInterval(() => { if (!H.dead) broadcast(); }, 2500);
 
 function onJoin(p) {
   if (!p || !p.pid || !p.name) return;
-  if (!H.players[p.pid]) H.players[p.pid] = { name: p.name, lang: p.lang || 'en', score: 0 };
-  else { H.players[p.pid].name = p.name; H.players[p.pid].lang = p.lang || 'en'; }
+  if (!H.players[p.pid]) H.players[p.pid] = { name: p.name, lang: p.lang || 'en', avatar: avValid(p.avatar), score: 0 };
+  else {
+    H.players[p.pid].name = p.name;
+    H.players[p.pid].lang = p.lang || 'en';
+    H.players[p.pid].avatar = avValid(p.avatar);
+  }
   paintLobby();
   broadcastSoon();
 }
@@ -141,7 +203,10 @@ function broadcastSoon() {
 }
 
 function broadcast() {
-  const st = { phase: H.phase };
+  if (H.dead) return;
+  /* every state carries the host's identity + birth time, so players can
+     ignore anything from an out-ranked host tab */
+  const st = { phase: H.phase, hostId: HOST_ID, since: HOST_SINCE, pids: playerIds() };
   if (H.phase === 'q' || H.phase === 'q2') {
     const q = cur();
     st.n = q.n; st.total = q.total; st.kind = q.kind; st.part = H.part;
@@ -155,6 +220,7 @@ function broadcast() {
     st.svgR = q.svgR;
     st.reveal = q.reveal;
     st.why = q.why || null;
+    st.letter = RULE_LETTER[q.answer] || 'Δ';   // which rail tile lights up
     st.verdicts = verdicts();
     st.board = board().slice(0, 5);
   } else if (H.phase === 'podium') {
@@ -171,11 +237,25 @@ function paintLobby() {
     : ids.length + (ids.length === 1 ? ' player in the lobby' : ' players in the lobby');
   $('b-start').disabled = ids.length === 0;
   $('b-start').textContent = 'Start — ' + ids.length + (ids.length === 1 ? ' player' : ' players');
-  const seen = new Set([...$('h-roster').children].map(c => c.dataset.pid));
+  /* the Kahoot wall: each learner pops in as a tilted pastel card with
+     their avatar — colour and tilt are seeded from the pid, so a card
+     never changes personality on repaint */
+  const byPid = {};
+  [...$('h-roster').children].forEach(c => { byPid[c.dataset.pid] = c; });
   ids.forEach(pid => {
-    if (seen.has(pid)) return;
-    const c = document.createElement('span');
-    c.className = 'chip pop'; c.dataset.pid = pid; c.textContent = H.players[pid].name;
+    const pl = H.players[pid];
+    if (byPid[pid]) {                        // rejoined, maybe with a new name/avatar
+      byPid[pid].querySelector('.pname').textContent = pl.name;
+      byPid[pid].querySelector('.pav').textContent = avEmoji(pl.avatar);
+      return;
+    }
+    const c = document.createElement('div');
+    c.className = 'pcard'; c.dataset.pid = pid;
+    c.style.background = avPastel(pid);
+    c.style.setProperty('--tilt', avTilt(pid));
+    c.innerHTML = '<span class="pav"></span><span class="pname"></span>';
+    c.querySelector('.pav').textContent = avEmoji(pl.avatar);
+    c.querySelector('.pname').textContent = pl.name;
     $('h-roster').appendChild(c);
   });
 }
@@ -204,6 +284,10 @@ function toPart2() {
 }
 
 function advance() {
+  /* re-entry guard: Skip stays visible across the part-1→part-2 switch, so a
+     double-click would advance twice and skip part 2 entirely */
+  if (Date.now() - (H.lastAdvance || 0) < 500) return;
+  H.lastAdvance = Date.now();
   stopTimer();
   const q = cur();
   if (H.phase === 'q' && q.part2) return toPart2();
@@ -229,8 +313,9 @@ function podium() {
     const p = top[i]; if (!p) return;
     const d = document.createElement('div');
     d.className = 'pod p' + (i + 1);
-    d.innerHTML = '<div class="name"></div><div class="block">' + (i + 1) +
+    d.innerHTML = '<div class="pav-big"></div><div class="name"></div><div class="block">' + (i + 1) +
                   '</div><div class="score">' + p.score + '</div>';
+    d.querySelector('.pav-big').textContent = avEmoji(p.avatar);
     d.querySelector('.name').textContent = p.name;
     $('h-pod').appendChild(d);
   });
@@ -242,7 +327,7 @@ function podium() {
 
 $('b-end').onclick = () => {
   H.phase = 'ended';
-  net.send('state', { phase: 'ended' });
+  net.send('state', { phase: 'ended', hostId: HOST_ID, since: HOST_SINCE });
   setTimeout(() => {
     net.leave();
     H.players = {}; H.game = null; H.i = -1; H.answers = { 1: {}, 2: {} };
@@ -255,8 +340,12 @@ function onAnswer(p) {
   const q = cur();
   if (!q || !p || !H.players[p.pid]) return;
   if (p.n !== q.n) return;
-  const wantPhase = p.part === 1 ? 'q' : 'q2';
-  if (H.phase !== wantPhase || p.part !== H.part) return;
+  /* part-1 answers stay welcome DURING part 2 of the same question: a kid on
+     laggy wifi who tapped in time must not lose credit because the message
+     took 1.5s to arrive. Verdicts are only computed at the reveal, so a
+     late-landing part-1 answer still counts fully. */
+  if (p.part === 1 && H.phase !== 'q' && H.phase !== 'q2') return;
+  if (p.part === 2 && H.phase !== 'q2') return;
   if (H.answers[p.part][p.pid]) return;
 
   let ok = false, pts = 0, trap = null;
@@ -299,7 +388,7 @@ function verdicts() {
 
 function board() {
   return playerIds()
-    .map(pid => ({ pid, name: H.players[pid].name, score: H.players[pid].score }))
+    .map(pid => ({ pid, name: H.players[pid].name, avatar: H.players[pid].avatar, score: H.players[pid].score }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
 
@@ -314,6 +403,8 @@ function places() {
 /* ---------- painting ---------- */
 function paintQuestion() {
   const q = cur();
+  railMount($('rail-q'));
+  railReset($('rail-q'));
   $('h-qn').textContent = 'Question ' + q.n + ' of ' + q.total;
   $('h-fig').innerHTML = q.svgQ;
   $('h-prompt').textContent = H.part === 2 ? UI.whichPar.en
@@ -338,6 +429,8 @@ function paintTally() {
 
 function paintReveal() {
   const q = cur();
+  railMount($('rail-r'));
+  railGlow($('rail-r'), RULE_LETTER[q.answer] || 'Δ');
   $('h-reason').textContent = q.reveal.en;
   const why = q.why ? q.why.en : '';
   $('h-why').textContent = why;
@@ -351,8 +444,9 @@ function paintBoard(el, rows) {
   el.innerHTML = '';
   rows.forEach((p, i) => {
     const li = document.createElement('li');
-    li.innerHTML = '<span class="pos">' + (i + 1) + '</span><span class="nm"></span>' +
-                   '<span class="pts">' + p.score + '</span>';
+    li.innerHTML = '<span class="pos">' + (i + 1) + '</span><span class="bav"></span>' +
+                   '<span class="nm"></span><span class="pts">' + p.score + '</span>';
+    li.querySelector('.bav').textContent = avEmoji(p.avatar);
     li.querySelector('.nm').textContent = p.name;
     el.appendChild(li);
   });
@@ -368,7 +462,7 @@ function startTimer(seconds) {
     const s = Math.ceil(left / 1000);
     $('h-clock').textContent = s;
     $('h-clock').className = 'timer' + (s <= 5 ? ' low' : '');
-    $('h-bar').style.width = (left / H.totalMs * 100) + '%';
+    railDrain($('rail-q'), 1 - left / H.totalMs);
     if (left <= 0) { stopTimer(); advance(); }
   };
   paint();
@@ -382,11 +476,14 @@ function confetti() {
   cv.style.display = 'block';
   cv.width = innerWidth; cv.height = innerHeight;
   const cols = ['#7c3aed', '#db2777', '#0d9488', '#f59e0b', '#2563eb'];
-  const bits = Array.from({ length: 130 }, () => ({
+  const bits = Array.from({ length: 130 }, (_, i) => ({
     x: Math.random() * cv.width, y: -Math.random() * cv.height,
     r: 4 + Math.random() * 6, s: 1.4 + Math.random() * 2.6,
-    c: cols[Math.floor(Math.random() * cols.length)], a: Math.random() * 6
+    c: cols[Math.floor(Math.random() * cols.length)], a: Math.random() * 6,
+    /* every fourth bit is a falling FUNKY X letter */
+    L: i % 4 === 0 ? RAIL[i / 4 % RAIL.length | 0].L : null
   }));
+  ctx.textAlign = 'center';
   let frames = 0;
   (function loop() {
     ctx.clearRect(0, 0, cv.width, cv.height);
@@ -394,13 +491,18 @@ function confetti() {
       b.y += b.s; b.a += .06; b.x += Math.sin(b.a) * .9;
       if (b.y > cv.height) { b.y = -10; b.x = Math.random() * cv.width; }
       ctx.fillStyle = b.c;
-      ctx.fillRect(b.x, b.y, b.r, b.r * 1.6);
+      if (b.L) {
+        ctx.font = '700 ' + (b.r + 14) + 'px Fredoka, sans-serif';
+        ctx.fillText(b.L, b.x, b.y);
+      }
+      else ctx.fillRect(b.x, b.y, b.r, b.r * 1.6);
     });
     if (++frames < 600) requestAnimationFrame(loop);
     else cv.style.display = 'none';
   })();
 }
 
+railMount($('rail-hero'), { stagger: true });
 paintLobby();
 show('s-lobby');
 </script>
