@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reason Rush — teacher</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/geom.js"></script>
+<script src="js/diagrams.js"></script>
+<script src="js/reasons.js"></script>
+<script src="js/questions.js"></script>
+<script src="js/net.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ lobby ============ -->
+  <section id="s-lobby">
+    <div class="split">
+      <div class="card center">
+        <p class="sub" style="margin:0">Class code</p>
+        <p class="code" id="h-code">MATH</p>
+        <p class="sub" id="h-url" style="word-break:break-all"></p>
+        <button class="btn wide" id="b-start" disabled>Start — 0 players</button>
+        <p class="sub" style="margin:12px 0 0;font-size:13px">
+          Nothing is saved. Names and scores live only in this tab until you end the game.
+        </p>
+      </div>
+      <div class="card">
+        <h2 id="h-count">Nobody has joined yet</h2>
+        <div class="chips" id="h-roster"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ question ============ -->
+  <section id="s-q" class="hide">
+    <div class="row between" style="margin-bottom:8px">
+      <strong id="h-qn"></strong>
+      <span id="h-tally" class="chip"></span>
+      <span class="timer" id="h-clock">20</span>
+    </div>
+    <div class="bar" style="margin-bottom:12px"><i id="h-bar" style="width:100%"></i></div>
+    <div class="split">
+      <div>
+        <div class="figbox" id="h-fig"></div>
+        <p class="prompt" id="h-prompt">For why?</p>
+      </div>
+      <div class="card">
+        <h2 id="h-opts-title">On their screens</h2>
+        <div id="h-opts" class="chips"></div>
+        <button class="btn ghost wide" id="b-skip" style="margin-top:16px">Skip ahead</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ reveal ============ -->
+  <section id="s-reveal" class="hide">
+    <div class="split">
+      <div>
+        <p class="center" style="margin:0 0 12px"><span class="reason" id="h-reason"></span></p>
+        <p class="center sub hide" id="h-why" style="font-weight:600"></p>
+        <div class="figbox" id="h-rfig"></div>
+      </div>
+      <div class="card">
+        <h2>Leaderboard</h2>
+        <ol class="board" id="h-board"></ol>
+        <button class="btn wide" id="b-next" style="margin-top:8px">Next question</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ podium ============ -->
+  <section id="s-podium" class="hide">
+    <div class="card center">
+      <h1>🏆 Winners</h1>
+      <div class="podium" id="h-pod"></div>
+      <ol class="board" id="h-board2" style="max-width:460px;margin:0 auto 18px"></ol>
+      <button class="btn danger" id="b-end">End game &amp; wipe everything</button>
+      <p class="sub" style="margin-top:10px;font-size:13px">
+        Ending clears every name and score and sends the class back to the join screen.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<canvas id="confetti" style="position:fixed;inset:0;pointer-events:none;display:none"></canvas>
+
+<script>
+/* ---------------------------------------------------------------
+   Teacher screen. Owns the game: builds the questions, renders the
+   diagrams, marks the answers, keeps the scores. Learners' devices are
+   told only what to show.
+   --------------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const SECTIONS = ['s-lobby', 's-q', 's-reveal', 's-podium'];
+const show = id => SECTIONS.forEach(s => $(s).classList.toggle('hide', s !== id));
+
+const H = {
+  players: {},        // pid -> {name, lang, score}
+  game: null,
+  i: -1,
+  phase: 'lobby',
+  part: 1,
+  answers: { 1: {}, 2: {} },
+  endsAt: 0,
+  totalMs: 0
+};
+let net = null, tick = null, pending = null;
+
+$('h-code').textContent = CONFIG.CLASS_CODE;
+$('h-url').textContent = location.href.replace(/host\.html.*$/, '');
+
+const cur = () => H.game && H.game[H.i];
+const playerIds = () => Object.keys(H.players);
+const answeredNow = () => Object.keys(H.answers[H.part] || {}).length;
+
+/* ---------- connection ---------- */
+net = makeNet((event, p) => {
+  if (event === 'join') return onJoin(p);
+  if (event === 'answer') return onAnswer(p);
+}, status => {
+  if (status === 'SUBSCRIBED') net.send('ping', {});   // ask anyone already out there to check in
+});
+
+function onJoin(p) {
+  if (!p || !p.pid || !p.name) return;
+  if (!H.players[p.pid]) H.players[p.pid] = { name: p.name, lang: p.lang || 'en', score: 0 };
+  else { H.players[p.pid].name = p.name; H.players[p.pid].lang = p.lang || 'en'; }
+  paintLobby();
+  broadcastSoon();
+}
+
+/* ---------- broadcasting ---------- */
+function broadcastSoon() {
+  if (pending) return;
+  pending = setTimeout(() => { pending = null; broadcast(); }, 250);
+}
+
+function broadcast() {
+  const st = { phase: H.phase };
+  if (H.phase === 'q' || H.phase === 'q2') {
+    const q = cur();
+    st.n = q.n; st.total = q.total; st.kind = q.kind; st.part = H.part;
+    st.svg = q.svgQ;
+    st.seconds = Math.round(H.totalMs / 1000);
+    st.msLeft = Math.max(0, H.endsAt - Date.now());
+    if (H.part === 2) st.options = q.part2.options;
+  } else if (H.phase === 'reveal') {
+    const q = cur();
+    st.n = q.n; st.total = q.total;
+    st.svgR = q.svgR;
+    st.reveal = q.reveal;
+    st.why = q.why || null;
+    st.verdicts = verdicts();
+    st.board = board().slice(0, 5);
+  } else if (H.phase === 'podium') {
+    st.top3 = board().slice(0, 3);
+    st.places = places();
+  }
+  net.send('state', st);
+}
+
+/* ---------- lobby ---------- */
+function paintLobby() {
+  const ids = playerIds();
+  $('h-count').textContent = ids.length === 0 ? 'Nobody has joined yet'
+    : ids.length + (ids.length === 1 ? ' player in the lobby' : ' players in the lobby');
+  $('b-start').disabled = ids.length === 0;
+  $('b-start').textContent = 'Start — ' + ids.length + (ids.length === 1 ? ' player' : ' players');
+  const seen = new Set([...$('h-roster').children].map(c => c.dataset.pid));
+  ids.forEach(pid => {
+    if (seen.has(pid)) return;
+    const c = document.createElement('span');
+    c.className = 'chip pop'; c.dataset.pid = pid; c.textContent = H.players[pid].name;
+    $('h-roster').appendChild(c);
+  });
+}
+
+/* ---------- game flow ---------- */
+$('b-start').onclick = () => {
+  H.game = buildGame((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  H.i = -1;
+  nextQuestion();
+};
+
+function nextQuestion() {
+  H.i++;
+  if (H.i >= H.game.length) return podium();
+  H.phase = 'q'; H.part = 1; H.answers = { 1: {}, 2: {} };
+  startTimer(CONFIG.SECONDS_REASON);
+  paintQuestion();
+  broadcast();
+}
+
+function toPart2() {
+  H.phase = 'q2'; H.part = 2;
+  startTimer(CONFIG.SECONDS_LINES);
+  paintQuestion();
+  broadcast();
+}
+
+function advance() {
+  stopTimer();
+  const q = cur();
+  if (H.phase === 'q' && q.part2) return toPart2();
+  reveal();
+}
+
+function reveal() {
+  H.phase = 'reveal';
+  paintReveal();
+  broadcast();
+  show('s-reveal');
+}
+
+$('b-skip').onclick = advance;
+$('b-next').onclick = nextQuestion;
+
+function podium() {
+  stopTimer();
+  H.phase = 'podium';
+  const top = board().slice(0, 3);
+  $('h-pod').innerHTML = '';
+  [1, 0, 2].forEach(i => {
+    const p = top[i]; if (!p) return;
+    const d = document.createElement('div');
+    d.className = 'pod p' + (i + 1);
+    d.innerHTML = '<div class="name"></div><div class="block">' + (i + 1) +
+                  '</div><div class="score">' + p.score + '</div>';
+    d.querySelector('.name').textContent = p.name;
+    $('h-pod').appendChild(d);
+  });
+  paintBoard($('h-board2'), board().slice(0, 8));
+  broadcast();
+  show('s-podium');
+  confetti();
+}
+
+$('b-end').onclick = () => {
+  H.phase = 'ended';
+  net.send('state', { phase: 'ended' });
+  setTimeout(() => {
+    net.leave();
+    H.players = {}; H.game = null; H.i = -1; H.answers = { 1: {}, 2: {} };
+    location.reload();
+  }, 600);
+};
+
+/* ---------- marking ---------- */
+function onAnswer(p) {
+  const q = cur();
+  if (!q || !p || !H.players[p.pid]) return;
+  if (p.n !== q.n) return;
+  const wantPhase = p.part === 1 ? 'q' : 'q2';
+  if (H.phase !== wantPhase || p.part !== H.part) return;
+  if (H.answers[p.part][p.pid]) return;
+
+  let ok = false, pts = 0, trap = null;
+  if (p.part === 1) {
+    ok = p.choice === q.answer;
+    if (!ok && TRAPS[p.choice]) trap = p.choice;
+    if (ok) {
+      const frac = Math.max(0, 1 - p.ms / (CONFIG.SECONDS_REASON * 1000));
+      pts = Math.round(CONFIG.POINTS_BASE + CONFIG.POINTS_SPEED * frac);
+    }
+  } else {
+    ok = p.choice === q.part2.answer;
+    if (ok) {
+      const frac = Math.max(0, 1 - p.ms / (CONFIG.SECONDS_LINES * 1000));
+      pts = Math.round(CONFIG.POINTS_LINES_BASE + CONFIG.POINTS_LINES_SPEED * frac);
+    }
+  }
+  H.answers[p.part][p.pid] = { choice: p.choice, ok, pts, trap };
+  H.players[p.pid].score += pts;
+  paintTally();
+  if (answeredNow() >= playerIds().length) advance();
+}
+
+function verdicts() {
+  const out = {};
+  const twoPart = !!cur().part2;
+  playerIds().forEach(pid => {
+    const a1 = H.answers[1][pid], a2 = H.answers[2][pid];
+    if (!a1 && !a2) return;                       // never answered — no card
+    out[pid] = {
+      ok: !!(a1 && a1.ok),
+      pts: (a1 ? a1.pts : 0) + (a2 ? a2.pts : 0),
+      trap: a1 ? a1.trap : null,
+      total: H.players[pid].score,
+      linesOk: twoPart ? !!(a2 && a2.ok) : null
+    };
+  });
+  return out;
+}
+
+function board() {
+  return playerIds()
+    .map(pid => ({ pid, name: H.players[pid].name, score: H.players[pid].score }))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+}
+
+/* place goes over the wire as a plain number — the learner's device knows
+   whether to write "3rd" or "3de" */
+function places() {
+  const out = {};
+  board().forEach((p, i) => { out[p.pid] = { place: i + 1, score: p.score }; });
+  return out;
+}
+
+/* ---------- painting ---------- */
+function paintQuestion() {
+  const q = cur();
+  $('h-qn').textContent = 'Question ' + q.n + ' of ' + q.total;
+  $('h-fig').innerHTML = q.svgQ;
+  $('h-prompt').textContent = H.part === 2 ? UI.whichPar.en
+    : q.kind === 'yesno' ? UI.isExt.en : UI.forWhy.en;
+  $('h-prompt').className = 'prompt' + (H.part === 2 || q.kind === 'yesno' ? ' small' : '');
+  const list = H.part === 2 ? q.part2.options
+    : q.kind === 'yesno' ? ['Yes', 'No']
+    : OPTION_ORDER.map(id => optionText(id, 'en'));
+  $('h-opts').innerHTML = '';
+  list.forEach(txt => {
+    const c = document.createElement('span');
+    c.className = 'chip'; c.textContent = txt;
+    $('h-opts').appendChild(c);
+  });
+  paintTally();
+  show('s-q');
+}
+
+function paintTally() {
+  $('h-tally').textContent = answeredNow() + ' of ' + playerIds().length + ' answered';
+}
+
+function paintReveal() {
+  const q = cur();
+  $('h-reason').textContent = q.reveal.en;
+  const why = q.why ? q.why.en : '';
+  $('h-why').textContent = why;
+  $('h-why').classList.toggle('hide', !why);
+  $('h-rfig').innerHTML = q.svgR;
+  paintBoard($('h-board'), board().slice(0, 5));
+  $('b-next').textContent = H.i >= H.game.length - 1 ? 'Show the winners' : 'Next question';
+}
+
+function paintBoard(el, rows) {
+  el.innerHTML = '';
+  rows.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="pos">' + (i + 1) + '</span><span class="nm"></span>' +
+                   '<span class="pts">' + p.score + '</span>';
+    li.querySelector('.nm').textContent = p.name;
+    el.appendChild(li);
+  });
+}
+
+/* ---------- clock ---------- */
+function startTimer(seconds) {
+  stopTimer();
+  H.totalMs = seconds * 1000;
+  H.endsAt = Date.now() + H.totalMs;
+  const paint = () => {
+    const left = Math.max(0, H.endsAt - Date.now());
+    const s = Math.ceil(left / 1000);
+    $('h-clock').textContent = s;
+    $('h-clock').className = 'timer' + (s <= 5 ? ' low' : '');
+    $('h-bar').style.width = (left / H.totalMs * 100) + '%';
+    if (left <= 0) { stopTimer(); advance(); }
+  };
+  paint();
+  tick = setInterval(paint, 200);
+}
+function stopTimer() { if (tick) { clearInterval(tick); tick = null; } }
+
+/* ---------- confetti (podium only) ---------- */
+function confetti() {
+  const cv = $('confetti'), ctx = cv.getContext('2d');
+  cv.style.display = 'block';
+  cv.width = innerWidth; cv.height = innerHeight;
+  const cols = ['#7c3aed', '#db2777', '#0d9488', '#f59e0b', '#2563eb'];
+  const bits = Array.from({ length: 130 }, () => ({
+    x: Math.random() * cv.width, y: -Math.random() * cv.height,
+    r: 4 + Math.random() * 6, s: 1.4 + Math.random() * 2.6,
+    c: cols[Math.floor(Math.random() * cols.length)], a: Math.random() * 6
+  }));
+  let frames = 0;
+  (function loop() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    bits.forEach(b => {
+      b.y += b.s; b.a += .06; b.x += Math.sin(b.a) * .9;
+      if (b.y > cv.height) { b.y = -10; b.x = Math.random() * cv.width; }
+      ctx.fillStyle = b.c;
+      ctx.fillRect(b.x, b.y, b.r, b.r * 1.6);
+    });
+    if (++frames < 600) requestAnimationFrame(loop);
+    else cv.style.display = 'none';
+  })();
+}
+
+paintLobby();
+show('s-lobby');
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+/* =====================================================================
+   Reason Rush — the relay
+   ---------------------------------------------------------------------
+   Supabase Realtime BROADCAST only. No tables are read or written, no rows
+   exist, nobody signs in. Messages pass through a channel named after the
+   class code and are not stored anywhere; when the host leaves the channel
+   the game is gone.
+   ===================================================================== */
+function makeNet(onEvent, onStatus) {
+  const client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
+    realtime: { params: { eventsPerSecond: 40 } }
+  });
+  const ch = client.channel('rr-' + CONFIG.CLASS_CODE, {
+    config: { broadcast: { self: false, ack: false } }
+  });
+  ch.on('broadcast', { event: '*' }, m => onEvent(m.event, m.payload || {}));
+  ch.subscribe(s => onStatus && onStatus(s));
+
+  return {
+    send(event, payload) {
+      return ch.send({ type: 'broadcast', event, payload: payload || {} });
+    },
+    leave() {
+      try { ch.unsubscribe(); client.removeAllChannels(); } catch (e) { /* going away anyway */ }
+    }
+  };
+}
+
+/* a short id that survives a dropped wifi connection, so a tablet that falls
+   off and comes back keeps its score instead of joining as a new player */
+function playerId() {
+  let id = sessionStorage.getItem('rr-pid');
+  if (!id) {
+    id = 'p' + Math.random().toString(36).slice(2, 9);
+    sessionStorage.setItem('rr-pid', id);
+  }
+  return id;
+}

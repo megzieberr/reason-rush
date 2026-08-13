@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reason Rush</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/reasons.js"></script>
+<script src="js/net.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ join ============ -->
+  <section id="s-join" class="narrow-inner">
+    <h1>Reason Rush</h1>
+    <p class="sub" id="t-tag">Geometry reasons · Grade 8</p>
+    <div class="card">
+      <label class="fld" id="l-name">Your name</label>
+      <input type="text" id="i-name" maxlength="18" autocomplete="off" autocapitalize="words">
+      <label class="fld" id="l-code">Class code</label>
+      <input type="text" id="i-code" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <label class="fld" id="l-lang">Language</label>
+      <div class="row">
+        <button class="btn ghost grow" id="b-en">English</button>
+        <button class="btn ghost grow" id="b-af">Afrikaans</button>
+      </div>
+      <p id="p-err" class="sub hide" style="color:var(--bad);margin:12px 0 0;font-weight:700"></p>
+      <div style="margin-top:16px"><button class="btn wide" id="b-join">Join</button></div>
+    </div>
+  </section>
+
+  <!-- ============ lobby ============ -->
+  <section id="s-lobby" class="hide narrow-inner">
+    <div class="card center">
+      <h1 id="t-hi">You're in!</h1>
+      <p class="sub" id="t-wait">Wait for your teacher to start.</p>
+      <div class="chips" style="justify-content:center"><span class="chip" id="c-me"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ question ============ -->
+  <section id="s-q" class="hide">
+    <div class="row between" style="margin-bottom:8px">
+      <strong id="t-qn"></strong>
+      <span class="timer" id="t-clock">20</span>
+    </div>
+    <div class="bar" style="margin-bottom:12px"><i id="t-bar" style="width:100%"></i></div>
+    <!-- side by side on anything wide, stacked on a portrait tablet -->
+    <div class="split even">
+      <div class="figbox" id="q-fig"></div>
+      <div>
+        <p class="prompt" id="q-prompt">For why?</p>
+        <div class="opts" id="q-opts"></div>
+        <p class="sub center hide" id="t-locked" style="margin-top:14px;font-weight:700"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ reveal ============ -->
+  <section id="s-reveal" class="hide narrow-inner">
+    <div class="verdict" id="v-card">
+      <div class="mark" id="v-mark">✓</div>
+      <div class="pts" id="v-pts"></div>
+      <div class="note" id="v-note"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="sub center" style="margin:0 0 10px" id="t-answer-lbl">The answer</p>
+      <p class="center" style="margin:0 0 14px"><span class="reason" id="r-text"></span></p>
+      <p class="center sub hide" id="r-why" style="font-weight:600"></p>
+      <div class="figbox" id="r-fig"></div>
+    </div>
+  </section>
+
+  <!-- ============ podium ============ -->
+  <section id="s-podium" class="hide narrow-inner">
+    <div class="card center">
+      <h1 id="t-final">Final scores</h1>
+      <div class="podium" id="pod"></div>
+      <p class="sub" id="t-you"></p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   Player screen. Receives ready-made SVG from the host, so the answer
+   key never travels to a learner's laptop.
+   --------------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const SECTIONS = ['s-join', 's-lobby', 's-q', 's-reveal', 's-podium'];
+const show = id => SECTIONS.forEach(s => $(s).classList.toggle('hide', s !== id));
+
+const T = {
+  tag:    { en: 'Geometry reasons · Grade 8', af: 'Meetkunde-redes · Graad 8' },
+  name:   { en: 'Your name', af: 'Jou naam' },
+  code:   { en: 'Class code', af: 'Klaskode' },
+  lang:   { en: 'Language', af: 'Taal' },
+  join:   { en: 'Join', af: 'Sluit aan' },
+  hi:     { en: "You're in!", af: 'Jy is in!' },
+  wait:   { en: 'Wait for your teacher to start.', af: 'Wag vir jou juffrou om te begin.' },
+  noName: { en: 'Type your name first.', af: 'Tik eers jou naam.' },
+  badCode:{ en: 'That class code is not right.', af: 'Daardie klaskode is verkeerd.' },
+  locked: { en: 'Locked in — waiting for the others…', af: 'Ingesluit — wag vir die ander…' },
+  tooLate:{ en: 'Time was up.', af: 'Die tyd was om.' },
+  answer: { en: 'The answer', af: 'Die antwoord' },
+  qn:     { en: n => 'Question ' + n.a + ' of ' + n.b, af: n => 'Vraag ' + n.a + ' van ' + n.b },
+  final:  { en: 'Final scores', af: 'Finale punte' },
+  youAre: { en: p => 'You finished ' + ordinal(p.place, 'en') + ' with ' + p.score + ' points.',
+            af: p => 'Jy het ' + ordinal(p.place, 'af') + ' geëindig met ' + p.score + ' punte.' },
+  linesWrong: { en: 'The reason was right — the parallel lines were not.',
+                af: 'Die rede was reg — die ewewydige lyne nie.' },
+  soFar:  { en: n => n + ' points so far', af: n => n + ' punte altesaam' },
+  gone:   { en: 'Game over. Thanks for playing!', af: 'Speletjie klaar. Dankie vir die speel!' },
+  offline:{ en: 'Reconnecting…', af: 'Herkoppel tans…' }
+};
+const tr = (k, arg) => { const v = T[k][me.lang] || T[k].en; return typeof v === 'function' ? v(arg) : v; };
+
+const me = {
+  pid: playerId(),
+  name: sessionStorage.getItem('rr-name') || '',
+  lang: sessionStorage.getItem('rr-lang') || 'en',
+  joined: false,
+  answered: {},          // "n:part" -> true
+  shownAt: 0,
+  seconds: 0
+};
+let net = null, tick = null, lastState = null;
+
+/* ---------- join ---------- */
+function paintJoinLang() {
+  $('b-en').className = 'btn grow' + (me.lang === 'en' ? '' : ' ghost');
+  $('b-af').className = 'btn grow' + (me.lang === 'af' ? '' : ' ghost');
+  $('t-tag').textContent = tr('tag');
+  $('l-name').textContent = tr('name');
+  $('l-code').textContent = tr('code');
+  $('l-lang').textContent = tr('lang');
+  $('b-join').textContent = tr('join');
+}
+$('b-en').onclick = () => { me.lang = 'en'; paintJoinLang(); };
+$('b-af').onclick = () => { me.lang = 'af'; paintJoinLang(); };
+$('i-name').value = me.name;
+
+function err(msg) {
+  const p = $('p-err');
+  if (!msg) { p.classList.add('hide'); return; }
+  p.textContent = msg; p.classList.remove('hide');
+}
+
+$('b-join').onclick = () => {
+  const name = $('i-name').value.trim().replace(/\s+/g, ' ');
+  const code = $('i-code').value.trim().toUpperCase();
+  if (!name) return err(tr('noName'));
+  if (code !== CONFIG.CLASS_CODE) return err(tr('badCode'));
+  err('');
+  me.pid = playerId();          // fresh id if the last game was ended and wiped
+  me.name = name; me.joined = true;
+  sessionStorage.setItem('rr-name', name);
+  sessionStorage.setItem('rr-lang', me.lang);
+  $('c-me').textContent = name;
+  $('t-hi').textContent = tr('hi');
+  $('t-wait').textContent = tr('wait');
+  show('s-lobby');
+  connect();
+};
+$('i-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-join').click(); });
+$('i-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('i-code').focus(); });
+
+/* ---------- connection ---------- */
+function connect() {
+  if (net) return;
+  net = makeNet(onEvent, status => {
+    if (status === 'SUBSCRIBED') sayHello();
+  });
+}
+function sayHello() {
+  net.send('join', { pid: me.pid, name: me.name, lang: me.lang });
+}
+
+function onEvent(event, p) {
+  if (event === 'state') render(p);
+  else if (event === 'ping') sayHello();   // host asking everyone to check in
+}
+
+/* ---------- render ---------- */
+function render(st) {
+  lastState = st;
+  if (st.phase === 'lobby') { show('s-lobby'); stopClock(); return; }
+  if (st.phase === 'q' || st.phase === 'q2') return renderQ(st);
+  if (st.phase === 'reveal') return renderReveal(st);
+  if (st.phase === 'podium') return renderPodium(st);
+  if (st.phase === 'ended') {
+    /* a full reset, not just a screen change: drop the channel and forget who
+       this was, so nobody is silently sitting in the NEXT game's lobby without
+       having typed their name (Megan's rule — a new round means logging in
+       again) */
+    stopClock();
+    sessionStorage.removeItem('rr-pid');
+    sessionStorage.removeItem('rr-name');
+    if (net) { net.leave(); net = null; }
+    me.joined = false; me.answered = {}; me.name = '';
+    $('i-name').value = '';
+    $('i-code').value = '';
+    $('t-tag').textContent = tr('gone');
+    show('s-join');
+  }
+}
+
+function renderQ(st) {
+  stopClock();
+  const key = st.n + ':' + st.part;
+  $('t-qn').textContent = tr('qn', { a: st.n, b: st.total });
+  $('q-fig').innerHTML = st.svg;
+  $('q-opts').innerHTML = '';
+  $('t-locked').classList.add('hide');
+
+  let prompt, opts, cls;
+  if (st.part === 2) {
+    prompt = UI.whichPar[me.lang] || UI.whichPar.en;
+    opts = st.options.map(o => ({ id: o, text: o }));
+    cls = 'opts one';
+  } else if (st.kind === 'yesno') {
+    prompt = UI.isExt[me.lang] || UI.isExt.en;
+    opts = ['yes', 'no'].map(id => ({ id, text: YESNO[id][me.lang] || YESNO[id].en, yesno: true }));
+    cls = 'opts big';
+  } else {
+    prompt = UI.forWhy[me.lang] || UI.forWhy.en;
+    opts = OPTION_ORDER.map(id => ({ id, text: optionText(id, me.lang) }));
+    cls = 'opts';
+  }
+  $('q-prompt').textContent = prompt;
+  $('q-prompt').className = 'prompt' + (st.part === 2 || st.kind === 'yesno' ? ' small' : '');
+  $('q-opts').className = cls;
+
+  const done = !!me.answered[key];
+  opts.forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'opt' + (o.yesno ? ' yesno' : '') + (me.answered[key] === o.id ? ' picked' : '');
+    b.textContent = o.text;
+    b.disabled = done;
+    b.onclick = () => pick(st, o.id);
+    $('q-opts').appendChild(b);
+  });
+  if (done) lock();
+
+  me.shownAt = Date.now();
+  /* count down the time the HOST says is left, not a fresh full round — a
+     tablet that drops off and rejoins mid-question must not get its own
+     private extra seconds */
+  startClock(st.msLeft === undefined ? st.seconds * 1000 : st.msLeft, st.seconds * 1000);
+  show('s-q');
+}
+
+function pick(st, id) {
+  const key = st.n + ':' + st.part;
+  if (me.answered[key]) return;
+  me.answered[key] = id;
+  net.send('answer', {
+    pid: me.pid, n: st.n, part: st.part, choice: id,
+    ms: Date.now() - me.shownAt
+  });
+  const opts = [...$('q-opts').children];
+  opts.forEach(b => { b.disabled = true; });
+  const idx = st.part === 2 ? st.options.indexOf(id)
+            : st.kind === 'yesno' ? ['yes', 'no'].indexOf(id)
+            : OPTION_ORDER.indexOf(id);
+  if (opts[idx]) opts[idx].classList.add('picked');
+  lock();
+}
+
+function lock() {
+  $('t-locked').textContent = tr('locked');
+  $('t-locked').classList.remove('hide');
+}
+
+function renderReveal(st) {
+  stopClock();
+  const v = (st.verdicts || {})[me.pid];
+  const ok = v && v.ok;
+  $('v-card').className = 'verdict ' + (ok ? 'ok' : 'no');
+  $('v-mark').textContent = ok ? '✓' : '✗';
+  $('v-pts').textContent = v && v.pts ? '+' + v.pts : (v ? '0' : tr('tooLate'));
+  let note = '';
+  if (!v) note = tr('tooLate');
+  else if (v.trap) note = trapWhy(v.trap, me.lang);
+  else if (v.ok && v.linesOk === false) note = tr('linesWrong');
+  else note = tr('soFar', v.total);
+  $('v-note').textContent = note;
+
+  $('t-answer-lbl').textContent = tr('answer');
+  $('r-text').textContent = st.reveal[me.lang] || st.reveal.en;
+  const why = st.why ? (st.why[me.lang] || st.why.en) : '';
+  $('r-why').textContent = why;
+  $('r-why').classList.toggle('hide', !why);
+  $('r-fig').innerHTML = st.svgR;
+  show('s-reveal');
+}
+
+function renderPodium(st) {
+  stopClock();
+  $('t-final').textContent = tr('final');
+  $('pod').innerHTML = '';
+  const order = [1, 0, 2];   // 2nd, 1st, 3rd — so first place stands in the middle
+  order.forEach(i => {
+    const p = st.top3[i];
+    if (!p) return;
+    const d = document.createElement('div');
+    d.className = 'pod p' + (i + 1);
+    d.innerHTML = '<div class="name"></div><div class="block">' + (i + 1) +
+                  '</div><div class="score">' + p.score + '</div>';
+    d.querySelector('.name').textContent = p.name;
+    $('pod').appendChild(d);
+  });
+  const mine = (st.places || {})[me.pid];
+  $('t-you').textContent = mine ? tr('youAre', mine) : '';
+  show('s-podium');
+}
+
+/* ---------- clock ---------- */
+function startClock(msLeft, totalMs) {
+  const end = Date.now() + msLeft;
+  const paint = () => {
+    const left = Math.max(0, end - Date.now());
+    const s = Math.ceil(left / 1000);
+    $('t-clock').textContent = s;
+    $('t-clock').className = 'timer' + (s <= 5 ? ' low' : '');
+    $('t-bar').style.width = (left / totalMs * 100) + '%';
+    if (left <= 0) stopClock();
+  };
+  paint();
+  tick = setInterval(paint, 200);
+}
+function stopClock() { if (tick) { clearInterval(tick); tick = null; } }
+
+paintJoinLang();
+show('s-join');
+</script>
+</body>
+</html>
