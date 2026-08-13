@@ -1,4 +1,4 @@
-# Project status — updated 2026-08-13
+# Project status — updated 2026-08-13 (evening)
 
 ## Where we are
 
@@ -51,6 +51,18 @@ list of fourteen (ten real + four wrong-wording traps).
   `circle-geometry-game/js/config.js`. Kahoot-style lobby wall of tilted pastel cards.
 - **2026-08-13** — The little man (∠s opp equal sides) is her drawing: legs the same
   length, feet the same size. Eyes and head scale with the triangle.
+- **2026-08-13 (evening)** — **Host screen got an EN|AF pill** (top-right, remembered in
+  localStorage, flips mid-game). Every learner string already carried both languages in
+  reasons.js; only the host's own labels needed translating. Verified in the browser:
+  lobby, question, tally, chips, reveal, podium and the took-over overlay all flip.
+  Her ruling: "Leaderboard" stays English in both languages ("Ranglys" sounds like
+  something in prison).
+- **2026-08-13 (evening)** — Playtest false alarms settled, nothing changed: the 60→20
+  "jump" is the per-part clocks doing their job (class moves in lock-step, a part ends
+  when the LAST learner answers — solo play makes it look instant); partial marks per
+  part already exist (reason 600+400, follow-ups 300+200 each); the equilateral
+  double-answer WAS live — her "no" came from a half-stale browser cache (fresh
+  config.js beside stale questions.js). She confirmed all three after a hard refresh.
 - **2026-08-13** — **Test rigs must never share the live channel.** `roomCode()`:
   explicit `?room=` wins, localhost gets `DEV`, only a real deploy with no param uses
   the class code. Cause: my rig used code MATH and three fake "Test" players appeared
@@ -58,8 +70,8 @@ list of fourteen (ten real + four wrong-wording traps).
 
 ## Pending on Megan
 
-- 🌐 2 min **[whenever]**: play one full round on a tablet + laptop before the next
-  class, so the 60s clock and the three-part questions get a real-world try.
+- 🌐 2 min **[whenever]**: after the toggle deploys, open the host screen, tap AF and
+  check the projector reads naturally to you — the teacher-label translations are mine.
 
 ## Next up
 

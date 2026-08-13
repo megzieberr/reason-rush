@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reason Rush — teacher</title>
 <link rel="stylesheet" href="css/app.css">
+<style>
+  /* the projector-screen language pill (learners pick their own at join) */
+  #langpill { position: fixed; top: 10px; right: 12px; z-index: 60; display: flex; gap: 6px; }
+  #langpill button { font: 600 13px Fredoka, sans-serif; padding: 6px 12px; border-radius: 999px;
+    border: 2px solid var(--edge); background: #fff; color: var(--ink); cursor: pointer; }
+  #langpill button.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
 <script src="js/avatars.js"></script>
@@ -16,6 +23,10 @@
 <script src="js/net.js"></script>
 </head>
 <body>
+<div id="langpill">
+  <button id="lang-en" type="button">EN</button>
+  <button id="lang-af" type="button">AF</button>
+</div>
 <div class="wrap">
 
   <!-- ============ lobby ============ -->
@@ -26,11 +37,11 @@
     </div>
     <div class="split">
       <div class="card center">
-        <p class="sub" style="margin:0">Class code</p>
+        <p class="sub" style="margin:0" id="t-code-lbl">Class code</p>
         <p class="code" id="h-code">MATH</p>
         <p class="sub" id="h-url" style="word-break:break-all"></p>
         <button class="btn wide" id="b-start" disabled>Start — 0 players</button>
-        <p class="sub" style="margin:12px 0 0;font-size:13px">
+        <p class="sub" style="margin:12px 0 0;font-size:13px" id="t-nosave">
           Nothing is saved. Names and scores live only in this tab until you end the game.
         </p>
       </div>
@@ -72,7 +83,7 @@
         <div class="figbox" id="h-rfig"></div>
       </div>
       <div class="card">
-        <h2>Leaderboard</h2>
+        <h2 id="t-board-lbl">Leaderboard</h2>
         <ol class="board" id="h-board"></ol>
         <button class="btn wide" id="b-next" style="margin-top:8px">Next question</button>
       </div>
@@ -82,11 +93,11 @@
   <!-- ============ podium ============ -->
   <section id="s-podium" class="hide">
     <div class="card center">
-      <h1>🏆 Winners</h1>
+      <h1 id="t-winners">🏆 Winners</h1>
       <div class="podium" id="h-pod"></div>
       <ol class="board" id="h-board2" style="max-width:460px;margin:0 auto 18px"></ol>
       <button class="btn danger" id="b-end">End game &amp; wipe everything</button>
-      <p class="sub" style="margin-top:10px;font-size:13px">
+      <p class="sub" style="margin-top:10px;font-size:13px" id="t-endnote">
         Ending clears every name and score and sends the class back to the join screen.
       </p>
     </div>
@@ -123,6 +134,61 @@ function partSeconds(kind) {
   if (kind === 'lines') return CONFIG.SECONDS_LINES;
   return CONFIG.SECONDS_REASON;          // reason and yes/no
 }
+
+/* ---------- projector language ----------
+   Learners each pick a language when they join; this pill translates the
+   TEACHER screen. Question/reveal text already carries en+af (reasons.js) —
+   only the host's own labels live here. */
+let HL = localStorage.getItem('rr-host-lang') === 'af' ? 'af' : 'en';
+const HT = {
+  codeLbl:    { en: 'Class code', af: 'Klaskode' },
+  noSave:     { en: 'Nothing is saved. Names and scores live only in this tab until you end the game.',
+                af: 'Niks word gestoor nie. Name en punte leef net in hierdie blad totdat jy die spel beëindig.' },
+  nobody:     { en: 'Nobody has joined yet', af: 'Nog niemand het aangesluit nie' },
+  lobby1:     { en: '1 player in the lobby', af: '1 speler het aangesluit' },
+  lobbyN:     { en: '{n} players in the lobby', af: '{n} spelers het aangesluit' },
+  start1:     { en: 'Start — 1 player', af: 'Begin — 1 speler' },
+  startN:     { en: 'Start — {n} players', af: 'Begin — {n} spelers' },
+  question:   { en: 'Question {a} of {b}', af: 'Vraag {a} van {b}' },
+  answered:   { en: '{a} of {b} answered', af: '{a} van {b} het geantwoord' },
+  onScreens:  { en: 'On their screens', af: 'Op hulle skerms' },
+  skip:       { en: 'Skip ahead', af: 'Slaan oor' },
+  /* her ruling 2026-08-13: "Ranglys" sounds like prison — Leaderboard in both */
+  boardLbl:   { en: 'Leaderboard', af: 'Leaderboard' },
+  next:       { en: 'Next question', af: 'Volgende vraag' },
+  winnersBtn: { en: 'Show the winners', af: 'Wys die wenners' },
+  winners:    { en: '🏆 Winners', af: '🏆 Wenners' },
+  endBtn:     { en: 'End game & wipe everything', af: 'Beëindig die spel & vee alles uit' },
+  endNote:    { en: 'Ending clears every name and score and sends the class back to the join screen.',
+                af: 'Beëindig vee elke naam en punt uit en stuur die klas terug na die aansluitskerm.' },
+  tookTitle:  { en: 'Another teacher screen took over', af: '’n Ander onderwyserskerm het oorgeneem' },
+  tookBody:   { en: 'A newer host tab opened with the same class code, so this one has stepped aside ' +
+                    'and is no longer running the game.<br>Close this tab — or refresh it to take the game back.',
+                af: '’n Nuwer onderwysersblad het met dieselfde klaskode oopgemaak, so hierdie een het ' +
+                    'opsy gestaan en beheer nie meer die spel nie.<br>Maak hierdie blad toe — of herlaai dit om die spel terug te vat.' }
+};
+function ht(key, vals) {
+  let s = HT[key][HL] || HT[key].en;
+  if (vals) Object.keys(vals).forEach(k => { s = s.replace('{' + k + '}', vals[k]); });
+  return s;
+}
+function applyLang() {
+  localStorage.setItem('rr-host-lang', HL);
+  $('lang-en').classList.toggle('on', HL === 'en');
+  $('lang-af').classList.toggle('on', HL === 'af');
+  $('t-code-lbl').textContent = ht('codeLbl');
+  $('t-nosave').textContent = ht('noSave');
+  $('h-opts-title').textContent = ht('onScreens');
+  $('b-skip').textContent = ht('skip');
+  $('t-board-lbl').textContent = ht('boardLbl');
+  $('t-winners').textContent = ht('winners');
+  $('b-end').textContent = ht('endBtn');
+  $('t-endnote').textContent = ht('endNote');
+  paintLobby();
+  /* repaint whatever screen is up so mid-game flips take effect at once */
+  if (H.phase === 'q' && cur()) paintQuestion();
+  else if (H.phase === 'reveal' && cur()) paintReveal();
+}
 let net = null, tick = null, pending = null;
 
 /* ---------- single-host election ----------
@@ -151,10 +217,8 @@ function goDead() {
   o.style.cssText = 'position:fixed;inset:0;z-index:99;background:rgba(19,50,75,.93);' +
     'display:flex;align-items:center;justify-content:center;text-align:center;padding:30px';
   o.innerHTML = '<div style="color:#fff;max-width:520px"><div style="font-size:52px">🙅</div>' +
-    '<h2 style="color:#fff">Another teacher screen took over</h2>' +
-    '<p style="opacity:.85;line-height:1.6">A newer host tab opened with the same class code, ' +
-    'so this one has stepped aside and is no longer running the game.<br>' +
-    'Close this tab — or refresh it to take the game back.</p></div>';
+    '<h2 style="color:#fff">' + ht('tookTitle') + '</h2>' +
+    '<p style="opacity:.85;line-height:1.6">' + ht('tookBody') + '</p></div>';
   document.body.appendChild(o);
 }
 
@@ -242,10 +306,10 @@ function broadcast() {
 /* ---------- lobby ---------- */
 function paintLobby() {
   const ids = playerIds();
-  $('h-count').textContent = ids.length === 0 ? 'Nobody has joined yet'
-    : ids.length + (ids.length === 1 ? ' player in the lobby' : ' players in the lobby');
+  $('h-count').textContent = ids.length === 0 ? ht('nobody')
+    : ids.length === 1 ? ht('lobby1') : ht('lobbyN', { n: ids.length });
   $('b-start').disabled = ids.length === 0;
-  $('b-start').textContent = 'Start — ' + ids.length + (ids.length === 1 ? ' player' : ' players');
+  $('b-start').textContent = ids.length === 1 ? ht('start1') : ht('startN', { n: ids.length });
   /* the Kahoot wall: each learner pops in as a tilted pastel card with
      their avatar — colour and tilt are seeded from the pid, so a card
      never changes personality on repaint */
@@ -413,15 +477,15 @@ function paintQuestion() {
   const q = cur(), part = q.parts[H.partIdx];
   railMount($('rail-q'));
   railReset($('rail-q'));
-  $('h-qn').textContent = 'Question ' + q.n + ' of ' + q.total;
+  $('h-qn').textContent = ht('question', { a: q.n, b: q.total });
   $('h-fig').innerHTML = q.svgQ;
   const PROMPTS = { reason: UI.forWhy, yesno: UI.isExt, rel: UI.whichRel, lines: UI.whichPar };
-  $('h-prompt').textContent = PROMPTS[part.kind].en;
+  $('h-prompt').textContent = PROMPTS[part.kind][HL] || PROMPTS[part.kind].en;
   $('h-prompt').className = 'prompt' + (part.kind === 'reason' ? '' : ' small');
   const list = part.kind === 'lines' ? part.options
-    : part.kind === 'rel' ? RELS.map(id => REL_TEXT[id].en)
-    : part.kind === 'yesno' ? ['Yes', 'No']
-    : OPTION_ORDER.map(id => optionText(id, 'en'));
+    : part.kind === 'rel' ? RELS.map(id => REL_TEXT[id][HL] || REL_TEXT[id].en)
+    : part.kind === 'yesno' ? [YESNO.yes[HL] || YESNO.yes.en, YESNO.no[HL] || YESNO.no.en]
+    : OPTION_ORDER.map(id => optionText(id, HL));
   $('h-opts').innerHTML = '';
   list.forEach(txt => {
     const c = document.createElement('span');
@@ -433,20 +497,20 @@ function paintQuestion() {
 }
 
 function paintTally() {
-  $('h-tally').textContent = answeredNow() + ' of ' + playerIds().length + ' answered';
+  $('h-tally').textContent = ht('answered', { a: answeredNow(), b: playerIds().length });
 }
 
 function paintReveal() {
   const q = cur();
   railMount($('rail-r'));
   railGlow($('rail-r'), RULE_LETTER[q.answer] || 'Δ');
-  $('h-reason').textContent = q.reveal.en;
-  const why = q.why ? q.why.en : '';
+  $('h-reason').textContent = q.reveal[HL] || q.reveal.en;
+  const why = q.why ? (q.why[HL] || q.why.en) : '';
   $('h-why').textContent = why;
   $('h-why').classList.toggle('hide', !why);
   $('h-rfig').innerHTML = q.svgR;
   paintBoard($('h-board'), board().slice(0, 5));
-  $('b-next').textContent = H.i >= H.game.length - 1 ? 'Show the winners' : 'Next question';
+  $('b-next').textContent = H.i >= H.game.length - 1 ? ht('winnersBtn') : ht('next');
 }
 
 function paintBoard(el, rows) {
@@ -511,8 +575,11 @@ function confetti() {
   })();
 }
 
+$('lang-en').onclick = () => { HL = 'en'; applyLang(); };
+$('lang-af').onclick = () => { HL = 'af'; applyLang(); };
+
 railMount($('rail-hero'), { stagger: true });
-paintLobby();
+applyLang();                 // paints the lobby too
 show('s-lobby');
 </script>
 </body>
