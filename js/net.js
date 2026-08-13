@@ -6,11 +6,25 @@
    class code and are not stored anywhere; when the host leaves the channel
    the game is gone.
    ===================================================================== */
+/* Which channel to talk on.
+   The live class code is the default, but a test rig MUST NOT be able to walk
+   into a live lesson — that happened on 2026-08-13: the local rig used the
+   same code and three "Test" players appeared in Megan's real lobby mid-class.
+   So: anything served from localhost gets its own DEV room, and an explicit
+   ?room=... always wins. A learner who invents a ?room= just ends up alone in
+   an empty room, which harms nobody but themselves. */
+function roomCode() {
+  const asked = new URLSearchParams(location.search).get('room');
+  if (asked) return asked.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12) || 'DEV';
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'DEV';
+  return CONFIG.CLASS_CODE;
+}
+
 function makeNet(onEvent, onStatus) {
   const client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
     realtime: { params: { eventsPerSecond: 40 } }
   });
-  const ch = client.channel('rr-' + CONFIG.CLASS_CODE, {
+  const ch = client.channel('rr-' + roomCode(), {
     config: { broadcast: { self: false, ack: false } }
   });
   ch.on('broadcast', { event: '*' }, m => onEvent(m.event, m.payload || {}));
