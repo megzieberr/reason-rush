@@ -422,6 +422,11 @@ function renderPodium(st) {
 
 /* ---------- clock ---------- */
 function startClock(msLeft, totalMs) {
+  /* kill any running loop FIRST — every heartbeat resync calls this, and an
+     un-stopped loop lives on with its old end time, painting "0" and killing
+     the next question's clock (Megan's live find, 2026-08-13). The host's
+     startTimer always did this; the player copy had drifted. */
+  stopClock();
   const end = Date.now() + msLeft;
   const paint = () => {
     const left = Math.max(0, end - Date.now());
