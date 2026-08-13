@@ -85,8 +85,16 @@ const REL_TEXT = {
   comp:  { en: 'Complementary — add up to 90°',      af: 'Komplementêr — tel op tot 90°' },
   r360:  { en: 'Add up to 360°',                     af: 'Tel op tot 360°' }
 };
+/* A value may be a LIST when more than one option is genuinely true.
+   equilateral Δ is the only such case in this round: all three angles are
+   marked, so they are equal (60° each) AND they add up to 180° — both
+   answers are right and both must score (Megan's ruling, 2026-08-13).
+   No other rule has two true answers: co-int and adj-on-a-line are only
+   equal if both angles happen to be 90°, and the interior angles of the
+   scalene triangles this engine draws are never all equal. */
 const RULE_REL = {
-  corr: 'equal', alt: 'equal', vertopp: 'equal', oppeq: 'equal', equi: 'equal',
+  corr: 'equal', alt: 'equal', vertopp: 'equal', oppeq: 'equal',
+  equi: ['equal', 'supp'],
   coint: 'supp', adjstr: 'supp', inttri: 'supp',
   roundpt: 'r360'
 };

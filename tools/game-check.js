@@ -44,8 +44,17 @@ for (let g = 0; g < 200; g++) {
     q.parts.forEach(part => {
       if (part.kind === 'reason' && part.answer !== q.answer) fails.push(`game ${g} q${i}: reason part answer mismatch`);
       if (part.kind === 'rel') {
-        if (part.answer !== api.RULE_REL[q.answer]) fails.push(`game ${g} q${i}: rel answer ${part.answer} ≠ RULE_REL`);
-        if (api.RELS.indexOf(part.answer) < 0) fails.push(`game ${g} q${i}: rel answer ${part.answer} not an option`);
+        const want = api.RULE_REL[q.answer];
+        const wantArr = Array.isArray(want) ? want : [want];
+        if (JSON.stringify(part.accept) !== JSON.stringify(wantArr))
+          fails.push(`game ${g} q${i}: rel accepts [${part.accept}], RULE_REL says [${wantArr}]`);
+        if (part.answer !== part.accept[0]) fails.push(`game ${g} q${i}: rel answer not the first accepted`);
+        part.accept.forEach(a => {
+          if (api.RELS.indexOf(a) < 0) fails.push(`game ${g} q${i}: rel accepts ${a}, not an option`);
+        });
+        /* the equilateral memo must take BOTH true answers */
+        if (q.answer === 'equi' && !(part.accept.indexOf('equal') >= 0 && part.accept.indexOf('supp') >= 0))
+          fails.push(`game ${g} q${i}: equilateral must accept equal AND supp`);
       }
       if (part.kind === 'lines') {
         if (part.options.length !== 3) fails.push(`game ${g} q${i}: lines part has ${part.options.length} options`);

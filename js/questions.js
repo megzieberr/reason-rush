@@ -83,7 +83,14 @@ function buildGame(seed) {
       q.reveal = { en: YESNO[rule].en, af: YESNO[rule].af };
     } else {
       q.parts = [{ kind: 'reason', answer: rule }];
-      if (RULE_REL[rule]) q.parts.push({ kind: 'rel', answer: RULE_REL[rule] });
+      if (RULE_REL[rule]) {
+        /* accept is the memo: every option that is genuinely true here.
+           Usually one; equilateral Δ has two (see RULE_REL). answer stays the
+           headline one, for anything that wants to name a single answer. */
+        const rel = RULE_REL[rule];
+        const accept = Array.isArray(rel) ? rel.slice() : [rel];
+        q.parts.push({ kind: 'rel', answer: accept[0], accept });
+      }
       if (twoPart) q.parts.push({ kind: 'lines', answer: fig.answerPair, options: fig.pairOptions });
       q.reveal = twoPart
         ? { en: REASONS[rule].en + '; ' + fig.answerPair, af: REASONS[rule].af + '; ' + fig.answerPair }

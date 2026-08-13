@@ -11,11 +11,13 @@ const CONFIG = {
   CLASS_CODE: 'MATH',        // one code for every class
   QUESTIONS: 20,
 
-  /* 30, not 20: the question ends the moment everyone has answered, so a
-     longer clock only ever helps the slower readers (Megan, 2026-08-13) */
-  SECONDS_REASON: 30,        // pick the reason (also the yes/no questions)
-  SECONDS_REL: 10,           // equal / supplementary / complementary / 360°
-  SECONDS_LINES: 10,         // which two lines are parallel
+  /* Generous on purpose. The part ends the moment everyone has answered, so a
+     long clock costs nothing and only ever helps the slower readers — and
+     hunting the right reason down a list of fourteen genuinely takes a while
+     (Megan, 2026-08-13: 20s → 30s → 60s). */
+  SECONDS_REASON: 60,        // pick the reason (also the yes/no questions)
+  SECONDS_REL: 20,           // equal / supplementary / complementary / 360°
+  SECONDS_LINES: 20,         // which two lines are parallel
 
   POINTS_BASE: 600,          // for getting the reason right at all
   POINTS_SPEED: 400,         // on top, scaled by how much time was left

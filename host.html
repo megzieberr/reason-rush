@@ -360,7 +360,8 @@ function onAnswer(p) {
 
   const part = q.parts[pi];
   const isMain = part.kind === 'reason' || part.kind === 'yesno';
-  const ok = p.choice === part.answer;
+  /* a part may have more than one true answer — see accept in questions.js */
+  const ok = (part.accept || [part.answer]).indexOf(p.choice) >= 0;
   const trap = (part.kind === 'reason' && !ok && TRAPS[p.choice]) ? p.choice : null;
   let pts = 0;
   if (ok) {
