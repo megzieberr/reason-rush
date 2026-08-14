@@ -1,4 +1,4 @@
-# Project status — updated 2026-08-13 (evening)
+# Project status — updated 2026-08-14
 
 ## Where we are
 
@@ -16,6 +16,9 @@ list of fourteen (ten real + four wrong-wording traps).
 - Diagrams are drawn to scale by code (`js/geom.js` + `js/diagrams.js`), sharing the
   visual language of `gr8-constructions/index.html`. Megan has signed off on them —
   **the diagrams are settled, do not restyle them.**
+- **Avatars are now picture faces**, not emoji: 40 Fun Emoji faces × 8 colours
+  (`js/avatars.js`, files in `img/avatars/`). The kids asked for Kahoot-like
+  avatars. Everything renders through `avPaint()`.
 
 ## Decisions
 
@@ -63,6 +66,32 @@ list of fourteen (ten real + four wrong-wording traps).
   part already exist (reason 600+400, follow-ups 300+200 each); the equilateral
   double-answer WAS live — her "no" came from a half-stale browser cache (fresh
   config.js beside stale questions.js). She confirmed all three after a hard refresh.
+- **2026-08-14** — **Avatars swapped from the 52 Circle Geo emoji to DiceBear Fun
+  Emoji faces** (supersedes the 2026-08-13 emoji ruling below — that entry stays
+  for the record). Her kids asked for "more Kahoot-like avatars". 40 curated
+  faces × 8 colours = 320 combinations from 40 files: the face SVG is
+  transparent and the **colour is a CSS disc behind it**, so no colour needs its
+  own file. An avatar travels the relay as ONE string, `"<face>.<colour>"`
+  (e.g. `clever.berry`). Accessories (hats, moustaches) were considered and
+  **dropped** — the Fun Emoji set has none, and eyes/mouths already carry the
+  personality. Licence CC BY 4.0: Fun Emoji Set by Davis Uche, credited in the
+  README and on the join screen. **The faces are served from this repo — never
+  call the DiceBear API from the app.**
+- **2026-08-14** — **Audit before the lesson found six real bugs; all fixed.**
+  The rulings that came out of it: `avValid()` must reject non-strings AND
+  inherited property names (`constructor.sky` once passed and would have put a
+  broken image on the projector; an array id crashed the whole lobby wall) —
+  `tools/avatar-check.js` now guards this, run it after touching avatars.
+  `loading="lazy"` is for the **picker grid only**; anything on the projector
+  loads eagerly or a learner's face shows up as an empty disc. Avatar `<img>`
+  tags carry width/height (the SVGs have no intrinsic size and collapse to 0px
+  without them) and an `onerror` that leaves the plain coloured disc rather than
+  a broken-image icon. `avPaint()` is idempotent via `el.dataset.av` — a 30-kid
+  join rush used to rebuild every card's image on every join.
+- **2026-08-14** — **`?v=` on `avatars.js` and `app.css` in both HTMLs.** A
+  mid-day deploy could otherwise pair new HTML with a cached old script and
+  leave a learner with a dead Play button. **Bump the number whenever
+  `avatars.js` changes shape.**
 - **2026-08-13** — **Test rigs must never share the live channel.** `roomCode()`:
   explicit `?room=` wins, localhost gets `DEV`, only a real deploy with no param uses
   the class code. Cause: my rig used code MATH and three fake "Test" players appeared
@@ -70,8 +99,10 @@ list of fourteen (ten real + four wrong-wording traps).
 
 ## Pending on Megan
 
-- 🌐 2 min **[whenever]**: after the toggle deploys, open the host screen, tap AF and
-  check the projector reads naturally to you — the teacher-label translations are mine.
+- 🌐 2 min **[blocking]**: open the learner page, pick a face + colour, and check the
+  picker looks right to you before the lesson — I verified it in code, not with eyes.
+- 🌐 2 min **[whenever]**: open the host screen, tap AF and check the projector reads
+  naturally to you — the teacher-label translations are mine.
 
 ## Next up
 
@@ -99,6 +130,7 @@ Everything lives in `C:\Users\megzi\Desktop\Claude Code Projects\gr8-reason-rush
 | `node tools/check.js` | 720/720 figures obey their own rule (caught a real isosceles bug) |
 | `node tools/game-check.js` | 200 whole games: counts, parts recipe, no rule twice in a row, answer never a trap |
 | `node tools/eye-check.js` | the little man's eyes never touch (3.2px worst case) |
+| `node tools/avatar-check.js` | 40 faces ↔ 40 files, both languages, and `avValid` refuses every junk id shape |
 | `node tools/gallery.js [rule]` | renders every diagram, question + reveal, to `out/gallery.html` |
 | `node tools/serve.js` | local server on :5173 |
 

@@ -64,6 +64,8 @@ nothing. When a learner picks one, their own screen says why it was wrong.
 | `js/reasons.js` | the button list, the traps, the Afrikaans wording |
 | `js/config.js` | class code, timers, points |
 | `js/net.js` | the Supabase Realtime relay |
+| `js/avatars.js` | the 40 faces, the 8 colours, `avPaint()` |
+| `img/avatars/` | the 40 face SVGs, served from this site (never from DiceBear) |
 
 Diagrams are drawn to scale by code, not pictures. The visual language is
 lifted from `gr8-constructions/index.html`: ink-blue lines, a fat translucent
@@ -97,12 +99,32 @@ per rule, no rule twice in a row, the answer is never a trap, part 2 always
 contains the right pair.
 
 ```bash
+node tools/avatar-check.js
+```
+
+Proves the avatar set holds together: 40 faces ↔ 40 files with no orphans
+either way, both languages on every label, and `avValid` refusing every junk
+id the relay can carry (prototype names like `constructor.sky`, arrays,
+objects, numbers, and the old emoji ids) so nothing but a real face can ever
+reach the projector.
+
+```bash
 node tools/gallery.js          # every template, question + reveal, into out/gallery.html
 node tools/gallery.js oppeq    # just one template
 ```
 
 `test-twoup.html` puts the teacher and a learner side by side in one page for
 testing the relay without a second device.
+
+## Avatars
+
+Learners pick a face (40 of them) and a colour (8) — the colour disc behind
+the face is painted in CSS, so any face can wear any colour from one file per
+face. The faces are the [Fun Emoji Set](https://www.figma.com/community/file/968125295144990435)
+by **Davis Uche**, generated through [DiceBear](https://www.dicebear.com/styles/fun-emoji/)
+and used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The face list and colours live in `js/avatars.js`; an avatar travels over the
+relay as one string, `"<face>.<colour>"`.
 
 ## The Supabase project
 
@@ -113,7 +135,6 @@ behind it.
 
 ## Not built yet
 
-- **Deploy.** Needs to go somewhere the learners' devices can reach.
 - **Solo fallback** for when the school wifi dies mid-lesson.
 - **The 2D shapes round.** Same engine — a new question bank and a few new
   diagram templates.

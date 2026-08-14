@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reason Rush — teacher</title>
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=2">
 <style>
   /* the projector-screen language pill (learners pick their own at join) */
   #langpill { position: fixed; top: 10px; right: 12px; z-index: 60; display: flex; gap: 6px; }
@@ -14,7 +14,8 @@
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
-<script src="js/avatars.js"></script>
+<!-- ?v= bumped whenever avatars.js changes shape — see index.html -->
+<script src="js/avatars.js?v=2"></script>
 <script src="js/rail.js"></script>
 <script src="js/geom.js"></script>
 <script src="js/diagrams.js"></script>
@@ -319,7 +320,7 @@ function paintLobby() {
     const pl = H.players[pid];
     if (byPid[pid]) {                        // rejoined, maybe with a new name/avatar
       byPid[pid].querySelector('.pname').textContent = pl.name;
-      byPid[pid].querySelector('.pav').textContent = avEmoji(pl.avatar);
+      avPaint(byPid[pid].querySelector('.pav'), pl.avatar);
       return;
     }
     const c = document.createElement('div');
@@ -327,7 +328,7 @@ function paintLobby() {
     c.style.background = avPastel(pid);
     c.style.setProperty('--tilt', avTilt(pid));
     c.innerHTML = '<span class="pav"></span><span class="pname"></span>';
-    c.querySelector('.pav').textContent = avEmoji(pl.avatar);
+    avPaint(c.querySelector('.pav'), pl.avatar);
     c.querySelector('.pname').textContent = pl.name;
     $('h-roster').appendChild(c);
   });
@@ -389,7 +390,7 @@ function podium() {
     d.className = 'pod p' + (i + 1);
     d.innerHTML = '<div class="pav-big"></div><div class="name"></div><div class="block">' + (i + 1) +
                   '</div><div class="score">' + p.score + '</div>';
-    d.querySelector('.pav-big').textContent = avEmoji(p.avatar);
+    avPaint(d.querySelector('.pav-big'), p.avatar);
     d.querySelector('.name').textContent = p.name;
     $('h-pod').appendChild(d);
   });
@@ -519,7 +520,7 @@ function paintBoard(el, rows) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="pos">' + (i + 1) + '</span><span class="bav"></span>' +
                    '<span class="nm"></span><span class="pts">' + p.score + '</span>';
-    li.querySelector('.bav').textContent = avEmoji(p.avatar);
+    avPaint(li.querySelector('.bav'), p.avatar);
     li.querySelector('.nm').textContent = p.name;
     el.appendChild(li);
   });

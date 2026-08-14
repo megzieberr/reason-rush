@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reason Rush</title>
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=2">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
 <script src="js/reasons.js"></script>
-<script src="js/avatars.js"></script>
+<!-- ?v= bumped whenever avatars.js changes shape: a tablet holding a cached
+     copy of the OLD file next to this new HTML would throw on load and leave
+     a dead Play button (a half-stale cache faked a bug once already). -->
+<script src="js/avatars.js?v=2"></script>
 <script src="js/rail.js"></script>
 <script src="js/net.js"></script>
 </head>
@@ -34,19 +37,21 @@
       </div>
       <label class="fld" id="l-av">Pick your character</label>
       <div class="avrow">
-        <span class="avpre" id="av-pre">🔵</span>
+        <span class="avpre" id="av-pre"></span>
         <button class="btn ghost grow" id="b-shuffle">🎲 Surprise me</button>
       </div>
+      <div class="avcolours" id="av-colours"></div>
       <div class="avgrid" id="av-grid"></div>
       <p id="p-err" class="sub hide" style="color:var(--bad);margin:12px 0 0;font-weight:700"></p>
       <div style="margin-top:16px"><button class="btn wide" id="b-join">Play!</button></div>
     </div>
+    <p class="credit">Avatars: <a href="https://www.figma.com/community/file/968125295144990435" target="_blank" rel="noopener">Fun Emoji Set</a> by Davis Uche · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
   </section>
 
   <!-- ============ lobby ============ -->
   <section id="s-lobby" class="hide narrow-inner">
     <div class="card center">
-      <div class="bigav" id="lb-av">🔵</div>
+      <div class="bigav" id="lb-av"></div>
       <h1 id="t-hi">You're in!</h1>
       <p class="sub" id="t-wait">Wait for your teacher to start.</p>
       <div class="chips" style="justify-content:center"><span class="chip" id="c-me"></span></div>
@@ -181,24 +186,45 @@ function paintJoinLang() {
   $('l-av').textContent = tr('avLabel');
   $('b-shuffle').textContent = tr('shuffle');
   $('b-join').textContent = tr('join');
-  /* avatar names double as tooltips, in the picked language */
-  [...$('av-grid').children].forEach((b, i) => { b.title = AVATARS[i].label[me.lang] || AVATARS[i].label.en; });
+  /* face and colour names double as tooltips, in the picked language */
+  [...$('av-grid').children].forEach((b, i) => { b.title = AV_FACES[i].label[me.lang] || AV_FACES[i].label.en; });
+  [...$('av-colours').children].forEach((b, i) => { b.title = AV_COLOURS[i].label[me.lang] || AV_COLOURS[i].label.en; });
 }
 
 /* ---------- avatar picker ---------- */
-me.avatar = avValid(store.get('rr-avatar') || avRandom());
+/* a stored LEGACY id (the old emoji set, pre-2026-08-14) re-randomises
+   instead of collapsing the whole class onto the one default face */
+const storedAv = store.get('rr-avatar');
+me.avatar = (storedAv && avValid(storedAv) === storedAv) ? storedAv : avRandom();
 
+let lastScrolledFace = null;
 function paintAvatar() {
-  $('av-pre').textContent = avEmoji(me.avatar);
-  [...$('av-grid').children].forEach((b, i) => b.classList.toggle('sel', AVATARS[i].id === me.avatar));
-  const sel = $('av-grid').querySelector('.sel');
-  if (sel) sel.scrollIntoView({ block: 'nearest' });
+  const face = avFace(me.avatar).id, colour = avColour(me.avatar);
+  avPaint($('av-pre'), me.avatar);
+  /* the whole face grid wears the picked colour, so choosing a colour
+     repaints every face at once — one CSS variable, not 40 style writes */
+  $('av-grid').style.setProperty('--avcol', colour.hex);
+  [...$('av-grid').children].forEach((b, i) => b.classList.toggle('sel', AV_FACES[i].id === face));
+  [...$('av-colours').children].forEach((b, i) => b.classList.toggle('sel', AV_COLOURS[i].id === colour.id));
+  if (face !== lastScrolledFace) {          // colour taps mustn't yank the grid
+    lastScrolledFace = face;
+    const sel = $('av-grid').querySelector('.sel');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
 }
-AVATARS.forEach(a => {
+AV_FACES.forEach(f => {
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'av'; b.textContent = a.emoji;
-  b.onclick = () => { me.avatar = a.id; paintAvatar(); };
+  b.type = 'button'; b.className = 'av';
+  b.appendChild(avImg(f.id, true));      // lazy: 40 tiles, most offscreen
+  b.onclick = () => { me.avatar = f.id + '.' + avColour(me.avatar).id; paintAvatar(); };
   $('av-grid').appendChild(b);
+});
+AV_COLOURS.forEach(c => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'avcol';
+  b.style.background = c.hex;
+  b.onclick = () => { me.avatar = avFace(me.avatar).id + '.' + c.id; paintAvatar(); };
+  $('av-colours').appendChild(b);
 });
 $('b-shuffle').onclick = () => {
   let next = me.avatar;
@@ -228,7 +254,7 @@ $('b-join').onclick = () => {
   store.set('rr-avatar', me.avatar);
   store.set('rr-joined', '1');
   $('c-me').textContent = name;
-  $('lb-av').textContent = avEmoji(me.avatar);
+  avPaint($('lb-av'), me.avatar);
   $('t-hi').textContent = tr('hi');
   $('t-wait').textContent = tr('wait');
   show('s-lobby');
@@ -387,7 +413,7 @@ function renderReveal(st) {
   const v = (st.verdicts || {})[me.pid];
   const ok = v && v.ok;
   $('v-card').className = 'verdict ' + (ok ? 'ok' : 'no');
-  $('v-av').textContent = avEmoji(me.avatar);
+  avPaint($('v-av'), me.avatar);
   $('v-mark').textContent = ok ? '✓' : '✗';
   $('v-pts').textContent = v && v.pts ? '+' + v.pts : (v ? '0' : tr('tooLate'));
   let note = '';
@@ -423,7 +449,7 @@ function renderPodium(st) {
     d.className = 'pod p' + (i + 1);
     d.innerHTML = '<div class="pav-big"></div><div class="name"></div><div class="block">' + (i + 1) +
                   '</div><div class="score">' + p.score + '</div>';
-    d.querySelector('.pav-big').textContent = avEmoji(p.avatar);
+    avPaint(d.querySelector('.pav-big'), p.avatar);
     d.querySelector('.name').textContent = p.name;
     $('pod').appendChild(d);
   });
@@ -464,7 +490,7 @@ if (me.name && store.get('rr-joined') === '1') {
   me.joined = true;
   store.set('rr-avatar', me.avatar);   // keep the same face across re-hellos
   $('c-me').textContent = me.name;
-  $('lb-av').textContent = avEmoji(me.avatar);
+  avPaint($('lb-av'), me.avatar);
   $('t-hi').textContent = tr('hi');
   $('t-wait').textContent = tr('wait');
   show('s-lobby');
