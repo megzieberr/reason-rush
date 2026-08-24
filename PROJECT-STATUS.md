@@ -99,10 +99,9 @@ list of fourteen (ten real + four wrong-wording traps).
 
 ## Pending on Megan
 
-- 🌐 2 min **[blocking]**: open the learner page, pick a face + colour, and check the
-  picker looks right to you before the lesson — I verified it in code, not with eyes.
-- 🌐 2 min **[whenever]**: open the host screen, tap AF and check the projector reads
-  naturally to you — the teacher-label translations are mine.
+- Nothing. (2026-08-24 sweep, her word: the projector-Afrikaans check is closed — she is done with Reason Rush.)
+
+(2026-08-24 sweep, her word: the face/colour picker check is KILLED - the lesson it was for ran on 14 Aug and the game was played.)
 
 ## Next up
 
