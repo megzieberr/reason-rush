@@ -6,7 +6,7 @@ Megan: "it worked really well", she wants it again next year, with "a few change
 name when she picks it up. The Supabase relay `gr8-quiz-relay` (circle-geo account) has been
 paused since mid-Aug 2026 and will be gone by Supabase's 90-day rule; that is fine, it held no
 tables and no rows. **Next year: create a new free project, enable Realtime, paste its URL and
-anon key where `js/` reads them (search for `supabase.co`), push, done.** The skeleton is this
+anon key into `js/config.js`, push, done.** The skeleton is this
 repo as it stands. Not added to the keepalive pinger on purpose.
 
 ---
